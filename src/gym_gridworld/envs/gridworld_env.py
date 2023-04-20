@@ -17,7 +17,7 @@ COLORS = {0: [0.0, 0.0, 0.0], 1: [0.5, 0.5, 0.5],
           9: [1.0, 0.0, 0.0], 10: [1.0, 0.0, 0.0]}
 
 
-DEFAULT_ARGS = dict(shuffle_keys=True,
+DEFAULT_ARGS = dict(shuffle_keys=False,
                     change_agent_every=7)
 
 
@@ -69,6 +69,7 @@ class GridworldEnv(gym.Env):
         with open(grid_map_path, 'r') as f:
             grid_map = f.readlines()
         self.start_grid_map = np.array([[int(el) for el in line.replace('\n', '').split(' ') ] for line in grid_map])
+        print(grid_map_path)
 
         # sample agent location
         agent_pos = self.agent_start_locs[np.random.randint(4)]
@@ -93,8 +94,14 @@ class GridworldEnv(gym.Env):
         if ('contingency' in self.game_type or 'change' in self.game_type) and ('extended_1' in self.game_type or 'extended_2' in self.game_type):
             self.mock_location = np.random.choice([[10, 6], [6, 10], [10, 14], [14, 10]])
 
-        return self.observation
+        self.semantic_state = self.get_semantic_state()
+        return self.observation, dict(semantic_state=deepcopy(self.semantic_state))
 
+    def get_semantic_state(self):
+        semantic_state = dict(objects=self.candidates_pos,
+                              map=self.current_grid_map,
+                              goal=self.goal_pos)
+        return semantic_state
     @property
     def self_pos(self):
         return self.candidates_pos[self.agent_id]
@@ -111,17 +118,14 @@ class GridworldEnv(gym.Env):
             self.current_grid_map[candidate_pos[0], candidate_pos[1]] = 8
 
     def render(self, mode):
-
         if self.fig is None:
             self.fig, self.ax = plt.subplots()
             self.plot = self.ax.imshow(self.observation)
             plt.axis('off')
             plt.show(block=False)
-            plt.pause(0.01)
-        else:
-            self.plot.set_data(self.observation)
-            self.fig.canvas.draw()
-            plt.pause(0.01)
+        self.plot.set_data(self.observation)
+        self.fig.canvas.draw()
+        plt.pause(0.1)
 
     def seed(self, seed):
         self._seed = seed
@@ -137,7 +141,8 @@ class GridworldEnv(gym.Env):
             new_obs, rew, done, info = self.step_change_agent(action)
         else:
             raise NotImplementedError
-
+        self.semantic_state = self.get_semantic_state()
+        info['semantic_state'] = deepcopy(self.semantic_state)
         return new_obs, rew, done, info
 
     def is_empty(self, pos):
@@ -267,6 +272,10 @@ class GridworldEnv(gym.Env):
 
     def _close_env(self):
         plt.close('all')
+
+    @property
+    def n_candidates(self):
+        return len(self.candidates_pos)
 
 def play(env):
     import pygame

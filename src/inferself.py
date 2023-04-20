@@ -1,6 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+import gym
+import gym_gridworld
+
 ARGS = dict(n_objs=4)
 
 
@@ -8,11 +11,12 @@ ARGS = dict(n_objs=4)
 class InferSelf:
     def __init__(self, args=ARGS):
         self.n_objs = args['n_objs']
-        self.directions = [[1, 0], [-1, 0], [0, -1], [0, 1]]
+        self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]
         self.reset_memory()
         self.reset_theories()
 
     def reset_theories(self):
+        self.theory_found = False
         self.theories = []
         dirs = set([l2s(l) for l in self.directions]) # convert directions to string form
         for agent_id in range(self.n_objs):
@@ -47,14 +51,14 @@ class InferSelf:
         # store new info
         self.actions.append(action)
         for o_id in range(self.n_objs):
-            self.obj_pos[o_id].append(new_obs[o_id])
+            self.obj_pos[o_id].append(new_obs['objects'][o_id])
 
         # run inference for the new datapoint
         to_keep = []  # we keep track of theories with proba > 0
         for i_theory, theory in enumerate(self.theories):
             obj_new_pos = new_obs['objects'][theory['agent_id']]
             obj_prev_pos = prev_obs['objects'][theory['agent_id']]
-            action_dir = np.array(theory['action_mapping'][action])
+            action_dir = np.array(theory['input_mapping'][action])
             # in case of collision, the theory predicts no mvt
             if not self.is_collision(obj_prev_pos, action_dir, prev_obs['map']):
                 predicted_pos = obj_prev_pos + action_dir
@@ -72,15 +76,21 @@ class InferSelf:
         if len(to_keep) == 0:  # something weird happened (eg avatar switch)
             print('Past evidence is not consistent, let\'s reset the theories')
             self.reset_theories()
+        elif len(to_keep) == len(self.probas):
+            if not self.theory_found: print(f'  new datapoint ingested, we didn\'t learn anything here')
         else:
             self.theories = self.theories[to_keep]
             self.probas = self.probas[to_keep]
             self.probas = self.probas / self.probas.sum()  # renormalize the probabilities
-            print(f'  new datapoint ingested, we now have {self.n_theories} theories')
+            if not self.theory_found:  print(f'  new datapoint ingested, we now have {self.n_theories} theories')
 
         if self.n_theories == 1:
-            print(f'We found the agent with probability 1: it\'s object {self.theories[0]["agent_id"]}, its action mapping is: {self.theories[0]["action_mapping"]}')
-
+            if not self.theory_found: print(f'We found the agent with probability 1: it\'s object {self.theories[0]["agent_id"]}, its action mapping is: {self.theories[0]["input_mapping"]}')
+            self.theory_found = True
+            return self.theories[0], 1
+        else:
+            theory_id = np.random.choice(np.arange(self.n_theories), p=self.probas)
+            return self.theories[theory_id], self.probas[theory_id]
 
     def get_action(self, obs, mode=None):
         # there are two modes of actions
@@ -108,12 +118,12 @@ class InferSelf:
             for i_theory, theory in enumerate(self.theories):
                 agent_id = theory['agent_id']
                 reverse_mapping = theory['action_reverse_mapping']
-                mapping = theory['action_mapping']
+                mapping = theory['input_mapping']
                 agent_pos = obs['objects'][agent_id]
-                action_dir = theory['action_mapping'][action]
+                action_dir = theory['input_mapping'][action]
                 # several things can happen here
                 # either the theory is true, and
-                if self.is_collision(agent_pos, action_dir, obs['map']):
+                # if self.is_collision(agent_pos, action_dir, obs['map']):
 
 
     def exploit(self, obs):
@@ -125,7 +135,7 @@ class InferSelf:
             i_theory = np.random.choice(np.arange(self.n_theories), p=self.probas)
 
         agent_id = self.theories[i_theory]['agent_id']
-        reverse_mapping = self.theories[i_theory]['action_reverse_mapping']
+        reverse_mapping = self.theories[i_theory]['input_reveerse_mapping']
 
         # compute direction between the agent and the goal
         agent_pos = obs['objects'][agent_id]
@@ -147,7 +157,8 @@ class InferSelf:
         return good_actions, action
 
     def is_collision(self, obj_pos, action_dir, map):
-        return len(map[obj_pos + action_dir]) > 0
+        desired_pos = obj_pos + action_dir
+        return map[desired_pos[0], desired_pos[1]] not in [0, 3]
 
 
 def l2s(l):

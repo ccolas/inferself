@@ -113,7 +113,6 @@ venv.bak/
 .idea/
 
 # data
-*.txt
 #*.pk
 *.pt
 *.zip
