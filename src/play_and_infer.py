@@ -5,12 +5,13 @@ import gym
 import gym_gridworld
 from inferself import InferSelf
 
-ENV = 'logic-v0'
+ENV = 'contingency-v0'
 ARGS = dict(n_objs=4,
-            biased_input_mapping=False,
+            biased_input_mapping=True,
             bias_bot_mvt='uniform', # static or uniform
             simulation='sampling',  # exhaustive or sampling
-            n_simulations=500,  # number of simulations if sampling
+            n_simulations=50,  # number of simulations if sampling
+            infer_mapping=True,
             )
 
 def play_and_infer(env=ENV):

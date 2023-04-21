@@ -1,10 +1,11 @@
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 import itertools
 import scipy
 import gym
 import gym_gridworld
-
+from copy import deepcopy
 
 
 
@@ -32,25 +33,36 @@ class InferSelf:
     def reset_theories(self):
         self.theory_found = False
         self.theories = []
-        dirs = set(self.directions_str.copy())
+        dirs = self.directions_str.copy()
         # list all theories
         for agent_id in range(self.n_objs):
-            for dir0 in sorted(dirs):
-                remaining_dirs0 = dirs - set([dir0])
-                for dir1 in sorted(remaining_dirs0):
-                    remaining_dirs1 = dirs - set([dir0, dir1])
-                    for dir2 in sorted(remaining_dirs1):
-                        remaining_dirs2 = dirs - set([dir0, dir1, dir2])
-                        for dir3 in sorted(remaining_dirs2):
-                            dir0l, dir1l, dir2l, dir3l = [s2l(dir) for dir in [dir0, dir1, dir2, dir3]]  # convert string forms into list forms
-                            new_theory = dict(agent_id=agent_id,
-                                              input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
-                                              input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3})
-                            self.theories.append(new_theory)
+            if self.args['infer_mapping']:
+                for dir0 in dirs:
+                    remaining_dirs0 = dirs.copy()
+                    remaining_dirs0.remove(dir0)
+                    for dir1 in remaining_dirs0:
+                        remaining_dirs1 = remaining_dirs0.copy()
+                        remaining_dirs1.remove(dir1)
+                        for dir2 in remaining_dirs1:
+                            remaining_dir2 = remaining_dirs1.copy()
+                            remaining_dir2.remove(dir2)
+                            for dir3 in remaining_dir2:
+                                dir0l, dir1l, dir2l, dir3l = [s2l(dir) for dir in [dir0, dir1, dir2, dir3]]  # convert string forms into list forms
+                                new_theory = dict(agent_id=agent_id,
+                                                  input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
+                                                  input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3})
+                                self.theories.append(new_theory)
+            else:
+                dir0, dir1, dir2, dir3 = dirs
+                dir0l, dir1l, dir2l, dir3l = [s2l(dir) for dir in [dir0, dir1, dir2, dir3]]  # convert string forms into list forms
+                new_theory = dict(agent_id=agent_id,
+                                  input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
+                                  input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3})
+                self.theories.append(new_theory)
         self.theories = np.array(self.theories)
         self.probas = np.ones(self.n_theories) / self.n_theories  # uniform probability distribution over theories
         if self.biased_input_mapping:
-            self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 5
+            self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 1000
             self.probas /= self.probas.sum()
 
     def reset_memory(self):
@@ -102,6 +114,15 @@ class InferSelf:
             theory_id = np.random.choice(np.arange(self.n_theories), p=self.probas)
             return self.theories[theory_id], self.probas[theory_id]
 
+    def compute_posteriors(self, action, prev_obs, new_obs):
+        posteriors = np.zeros(self.n_theories)
+        # run inference for the new datapoint
+        for i_theory, theory in enumerate(self.theories):
+            likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
+            posterior = self.probas[i_theory] * likelihood
+            posteriors[i_theory] = posterior
+        return posteriors / posteriors.sum()
+
     def compute_likelihood(self, theory, prev_obs, new_obs, action):
         # probability of data given theory
         # product of the probability of observing each of the observed movements
@@ -148,10 +169,6 @@ class InferSelf:
         return np.prod(proba_movements)
 
 
-
-        weighted_obs = self.simulate(prev_obs, theory, action)
-        return weighted_obs.get(dict2s(new_obs), 0)
-
     def get_action(self, obs, mode=None):
         # there are two modes of actions
         # mode 1: the agent tries to infer which object it is and what the action mapping is in an optimal way
@@ -160,10 +177,19 @@ class InferSelf:
             if self.n_theories == 1: mode = 2
             else: mode = 1
 
+        good_actions_explore, action_explore = self.explore(obs)
+        good_actions_exploit, action_exploit = self.exploit(obs)
+
+        # if exploring and several actions are best, take the one advised by exploit
         if mode == 1:
-            good_actions, action = self.explore(obs)
+            good_actions = set(good_actions_exploit).intersection(set(good_actions_explore))
+            if len(good_actions) > 0:
+                action = np.random.choice(sorted(good_actions))
+            else:
+                action = action_explore
         elif mode == 2:
-            good_actions, action = self.exploit(obs)
+            action = action_exploit
+
         else: raise ValueError
         return action
 
@@ -171,18 +197,24 @@ class InferSelf:
         # for each action, compute expected information gain
         action_scores = []
         for action in range(4):
+
+
             # simulate possible observations given this theory and action
             weighted_obs = self.simulate(prev_obs, action)
             # information gain for each possible observation, weighted by probability
             assert (np.isclose(sum(weighted_obs.values()), 1))
             exp_info_gain = 0
+            # print(action)
             for obs_str, obs_prob in weighted_obs.items():
                 poss_obs = s2dict(obs_str)
-                new_probas = self.update(action, prev_obs, poss_obs, True)
+                new_probas = self.compute_posteriors(action, prev_obs, poss_obs)
                 info_gain = self.information_gain(self.probas, new_probas)
                 exp_info_gain += info_gain * obs_prob
+            #     print(obs_str.split('objects')[1], obs_prob, info_gain * obs_prob)
+            # print(exp_info_gain)
             action_scores.append(exp_info_gain)
-        return action_scores, np.argmax(action_scores)
+        max_score = np.max(action_scores)
+        return np.argwhere(action_scores == max_score).flatten(), np.argmax(action_scores)
 
 
     def information_gain(self, p0, p1):
@@ -225,10 +257,13 @@ class InferSelf:
 
     # Given this theory and this action, what is the probability distribution over possible observations?
     def simulate(self, prev_obs, action):
-
+        prev_obs = deepcopy(prev_obs)
         weighted_obs = {}
+        if action == 1:
+            stop = 1
         if self.args['simulation'] == 'exhaustive':
             # possible observations given this action, weighted by probability
+            # init_time = time.time()
             for i_theory, theory in enumerate(self.theories):
                 theory_prob = self.probas[i_theory]
 
@@ -257,12 +292,15 @@ class InferSelf:
                     movements = [x[0] for x in movements_and_probs]
                     prob = np.prod([x[1] for x in movements_and_probs]) * theory_prob
                     assert(prob > 0)
-                    map, positions = self.get_next_positions(prev_obs, movements, agent_id, current_map.copy())
-                    obs = {'objects': positions, 'map': map, 'goal': prev_obs['goal']}
+                    map, positions = self.get_next_positions(deepcopy(prev_obs), movements, agent_id, current_map.copy())
+                    obs = {'objects': positions.copy(), 'map': map, 'goal': prev_obs['goal']}
                     weighted_obs[dict2s(obs)] = weighted_obs.get(dict2s(obs), 0) + prob
+            # print(time.time() - init_time)
+
         elif self.args['simulation'] == 'sampling':
             theory_ids = np.random.choice(np.arange(self.n_theories), p=self.probas, size=self.args['n_simulations'])
             prob = 1 / self.args['n_simulations']
+            # init_time = time.time()
             for theory_id in theory_ids:
                 theory = self.theories[theory_id]
                 agent_id = theory['agent_id']
@@ -281,12 +319,13 @@ class InferSelf:
                     current_map[agent_pos[0], agent_pos[1]] = 0
                 positions[agent_id] = next_agent_pos
 
-
                 # sample bot pos
                 bot_id = 0
                 for obj_id, obj_pos in enumerate(prev_obs['objects']):
                     if obj_id != agent_id:
-                        next_pos = obj_pos + np.random.choice(self.directions + [[0, 0]], p=self.obj_direction_prior[bot_id])
+                        dirs = self.directions + [[0, 0]]
+                        i_dir = np.random.choice(np.arange(len(dirs)), p=self.obj_direction_prior[bot_id])
+                        next_pos = obj_pos + dirs[i_dir]
                         if not self.env.unwrapped.is_empty(next_pos, agent=False, map=current_map):
                             next_pos = obj_pos
                         else:
@@ -294,8 +333,9 @@ class InferSelf:
                             current_map[obj_pos[0], obj_pos[1]] = 0
                         positions[obj_id] = next_pos
                         bot_id += 1
-                obs = {'objects': positions, 'map': current_map.copy(), 'goal': prev_obs['goal']}
+                obs = {'objects': positions.copy(), 'map': current_map.copy(), 'goal': prev_obs['goal']}
                 weighted_obs[dict2s(obs)] = weighted_obs.get(dict2s(obs), 0) + prob
+            # print(time.time() - init_time)
         else:
             raise NotImplementedError
         return weighted_obs
