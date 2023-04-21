@@ -79,17 +79,20 @@ class InferSelf:
             return posteriors / posteriors.sum()
         # print(posteriors)
         self.probas = posteriors
+        self.probas = self.probas / self.probas.sum()  # renormalize the probabilities
+
         # delete theories with proba = 0
         if len(to_keep) == 0:  # something weird happened (eg avatar switch)
             print('Past evidence is not consistent, let\'s reset the theories')
             self.reset_theories()
-        elif len(to_keep) == len(self.probas):
-            if not self.theory_found: print(f'  new datapoint ingested, we didn\'t learn anything here')
         else:
-            self.theories = self.theories[to_keep]
-            self.probas = self.probas[to_keep]
+            if len(to_keep) == len(self.probas):
+                if not self.theory_found: print(f'  new datapoint ingested, we didn\'t learn anything here')
+            else:
+                self.theories = self.theories[to_keep]
+                self.probas = self.probas[to_keep]
+                if not self.theory_found:  print(f'  new datapoint ingested, we now have {self.n_theories} theories')
             self.probas = self.probas / self.probas.sum()  # renormalize the probabilities
-            if not self.theory_found:  print(f'  new datapoint ingested, we now have {self.n_theories} theories')
 
         if self.n_theories == 1:
             if not self.theory_found: print(f'We found the agent with probability 1: it\'s object {self.theories[0]["agent_id"]}, its action mapping is: {self.theories[0]["input_mapping"]}')
@@ -168,14 +171,8 @@ class InferSelf:
         # for each action, compute expected information gain
         action_scores = []
         for action in range(4):
-            weighted_obs = {}
-            # possible observations given this action, weighted by probability
-            for i_theory, theory in enumerate(self.theories):
-                theory_prob = self.probas[i_theory]
-                # simulate possible observations given this theory and action
-                theory_weighted_obs = self.simulate(prev_obs, theory, action)
-                for obs, obs_prob in theory_weighted_obs.items():
-                    weighted_obs[obs] = weighted_obs.get(obs, 0) + (theory_prob * obs_prob)
+            # simulate possible observations given this theory and action
+            weighted_obs = self.simulate(prev_obs, action)
             # information gain for each possible observation, weighted by probability
             assert (np.isclose(sum(weighted_obs.values()), 1))
             exp_info_gain = 0
@@ -227,40 +224,80 @@ class InferSelf:
         return map, positions
 
     # Given this theory and this action, what is the probability distribution over possible observations?
-    def simulate(self, prev_obs, theory, action, sample=False):
-        agent_id = theory['agent_id']
-        action_dir = theory['input_mapping'][action]
-        current_map = prev_obs['map']
+    def simulate(self, prev_obs, action):
 
-        # not specified by theory: movements of other objects
-        if self.args['sampling'] == 'exhaustive':
-            poss_movements = []
-            for i, obj_pos in enumerate(prev_obs['objects']):
-                if i==agent_id:
-                    obj_poss_movements = [(action_dir, 1)]
-                else:
-                    obj_poss_movements = []
-                    for dir_idx, p in enumerate(self.obj_direction_prior[i]):
-                        if p > 0:
-                            if dir_idx >= len(self.directions):
-                                dir = [0,0]
-                            else:
-                                dir = self.directions[dir_idx]
-                            obj_poss_movements.append((dir, p))
-                poss_movements.append(obj_poss_movements)
-            poss_movements_and_probs = itertools.product(*poss_movements)
-        else:
-            poss_move
-        
         weighted_obs = {}
-        for movements_and_probs in poss_movements_and_probs:
-            movements = [x[0] for x in movements_and_probs]
-            prob = np.prod([x[1] for x in movements_and_probs])
-            assert(prob > 0)
-            map, positions = self.get_next_positions(prev_obs, movements, agent_id, current_map.copy())
-            obs = {'objects': positions, 'map': map, 'goal': prev_obs['goal']}
-            weighted_obs[dict2s(obs)] = weighted_obs.get(dict2s(obs), 0) + prob
-        # hypothetical obs weighted by probability
+        if self.args['simulation'] == 'exhaustive':
+            # possible observations given this action, weighted by probability
+            for i_theory, theory in enumerate(self.theories):
+                theory_prob = self.probas[i_theory]
+
+                agent_id = theory['agent_id']
+                action_dir = theory['input_mapping'][action]
+                current_map = prev_obs['map']
+
+                # not specified by theory: movements of other objects
+                poss_movements = []
+                for i, obj_pos in enumerate(prev_obs['objects']):
+                    if i==agent_id:
+                        obj_poss_movements = [(action_dir, 1)]
+                    else:
+                        obj_poss_movements = []
+                        for dir_idx, p in enumerate(self.obj_direction_prior[i]):
+                            if p > 0:
+                                if dir_idx >= len(self.directions):
+                                    dir = [0,0]
+                                else:
+                                    dir = self.directions[dir_idx]
+                                obj_poss_movements.append((dir, p))
+                    poss_movements.append(obj_poss_movements)
+                poss_movements_and_probs = itertools.product(*poss_movements)
+
+                for movements_and_probs in poss_movements_and_probs:
+                    movements = [x[0] for x in movements_and_probs]
+                    prob = np.prod([x[1] for x in movements_and_probs]) * theory_prob
+                    assert(prob > 0)
+                    map, positions = self.get_next_positions(prev_obs, movements, agent_id, current_map.copy())
+                    obs = {'objects': positions, 'map': map, 'goal': prev_obs['goal']}
+                    weighted_obs[dict2s(obs)] = weighted_obs.get(dict2s(obs), 0) + prob
+        elif self.args['simulation'] == 'sampling':
+            theory_ids = np.random.choice(np.arange(self.n_theories), p=self.probas, size=self.args['n_simulations'])
+            prob = 1 / self.args['n_simulations']
+            for theory_id in theory_ids:
+                theory = self.theories[theory_id]
+                agent_id = theory['agent_id']
+                action_dir = theory['input_mapping'][action]
+                current_map = prev_obs['map'].copy()
+
+                # sample agent pos
+                agent_pos = prev_obs['objects'][agent_id]
+                next_agent_pos = agent_pos + action_dir
+                positions = [None for _ in range(self.n_objs)]
+                if not self.env.unwrapped.is_empty(next_agent_pos, agent=True, map=current_map):
+                    next_agent_pos = agent_pos
+                else:
+                    # update agent position on the map
+                    current_map[next_agent_pos[0], next_agent_pos[1]] = 4
+                    current_map[agent_pos[0], agent_pos[1]] = 0
+                positions[agent_id] = next_agent_pos
+
+
+                # sample bot pos
+                bot_id = 0
+                for obj_id, obj_pos in enumerate(prev_obs['objects']):
+                    if obj_id != agent_id:
+                        next_pos = obj_pos + np.random.choice(self.directions + [[0, 0]], p=self.obj_direction_prior[bot_id])
+                        if not self.env.unwrapped.is_empty(next_pos, agent=False, map=current_map):
+                            next_pos = obj_pos
+                        else:
+                            current_map[next_pos[0], next_pos[1]] = 8
+                            current_map[obj_pos[0], obj_pos[1]] = 0
+                        positions[obj_id] = next_pos
+                        bot_id += 1
+                obs = {'objects': positions, 'map': current_map.copy(), 'goal': prev_obs['goal']}
+                weighted_obs[dict2s(obs)] = weighted_obs.get(dict2s(obs), 0) + prob
+        else:
+            raise NotImplementedError
         return weighted_obs
 
 
