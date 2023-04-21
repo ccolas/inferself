@@ -146,11 +146,12 @@ class GridworldEnv(gym.Env):
         info['semantic_state'] = deepcopy(self.semantic_state)
         return new_obs, rew, done, info
 
-    def is_empty(self, pos, agent=False):
+    def is_empty(self, pos, agent=False, map=None):
         # checks whether the position is empty in the current map. If the agent, the goal is considered as an empty location
         if agent: empty = [0, 3]
         else: empty = [0]
-        return self.current_grid_map[int(pos[0]), int(pos[1])] in empty
+        if map is None: map = self.current_grid_map
+        return map[int(pos[0]), int(pos[1])] in empty
 
     def step_logic(self, action):
         action = int(action)
