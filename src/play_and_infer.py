@@ -5,7 +5,7 @@ import gym
 import gym_gridworld
 from inferself import InferSelf
 
-ENV = 'logic'
+ENV = 'logic-v0'
 
 def play_and_infer(env=ENV):
     screen = pygame.display.set_mode((300, 300))
@@ -40,6 +40,7 @@ def play_and_infer(env=ENV):
                 if action is not None:
                     break
         if action is not None:
+            print('Action:', ['up', 'down', 'left', 'right'][action])
             obs, rew, done, info = env.step(action)
             env.render(None)
             theory, proba = inferself.update(action, prev_info['semantic_state'], info['semantic_state'])

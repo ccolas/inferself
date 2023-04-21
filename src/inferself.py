@@ -13,7 +13,8 @@ class InferSelf:
     def __init__(self, args=ARGS):
         self.n_objs = args['n_objs']
         self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]
-        self.obj_direction_prior = np.tile(np.append(np.zeros(len(self.directions)), 1),(self.n_objs,1))#np.full((self.n_objs, len(self.directions)+1), 1/(len(self.directions)+1))
+        # self.obj_direction_prior = np.tile(np.append(np.zeros(len(self.directions)), 1),(self.n_objs,1))
+        self.obj_direction_prior = np.full((self.n_objs, len(self.directions)+1), 1/(len(self.directions)+1))
         self.reset_memory()
         self.reset_theories()
 
@@ -36,6 +37,8 @@ class InferSelf:
                             self.theories.append(new_theory)
         self.theories = np.array(self.theories)
         self.probas = np.ones(self.n_theories) / self.n_theories
+        self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 5
+        self.probas /= self.probas.sum()
 
     @property
     def n_theories(self):
@@ -78,7 +81,7 @@ class InferSelf:
 
         if hypothetical:
             return posteriors / posteriors.sum()
-        print(posteriors)
+        # print(posteriors)
         self.probas = posteriors
         # delete theories with proba = 0
         if len(to_keep) == 0:  # something weird happened (eg avatar switch)
