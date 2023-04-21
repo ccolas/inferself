@@ -5,7 +5,13 @@ import gym
 import gym_gridworld
 from inferself import InferSelf
 
-ENV = 'contingency-v0'
+ENV = 'logic-v0'
+ARGS = dict(n_objs=4,
+            biased_input_mapping=False,
+            bias_bot_mvt='uniform', # static or uniform
+            simulation='exhaustive',  # exhaustive or sampling
+            n_simulations=500,  # number of simulations if sampling
+            )
 
 def play_and_infer(env=ENV):
     screen = pygame.display.set_mode((300, 300))
@@ -13,11 +19,10 @@ def play_and_infer(env=ENV):
     env = gym.make(env)
     prev_obs, prev_info = env.reset()
     env.render(None)
-
+    args = ARGS
+    args.update(n_objs=env.n_candidates)
     inferself = InferSelf(env=env,
-                          args=dict(n_objs=env.n_candidates,
-                                    biased_input_mapping=False,
-                                    bias_bot_mvt='static'))
+                          args=args)
 
     running = True
 

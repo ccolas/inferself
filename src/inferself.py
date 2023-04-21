@@ -5,20 +5,21 @@ import scipy
 import gym
 import gym_gridworld
 
-ARGS = dict(n_objs=4,
-            biased_input_mapping=False,
-            bias_bot_mvt='static')
+
 
 
 
 class InferSelf:
-    def __init__(self, env, args=ARGS):
+    def __init__(self, env, args):
+        self.args = args
         self.n_objs = args['n_objs']
         self.biased_input_mapping = args['biased_input_mapping']
         self.bias_bot_mvt = args['bias_bot_mvt']
         self.env = env
 
         self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]
+        self.directions_str = [l2s(l) for l in self.directions] # convert directions to string form
+
         if self.bias_bot_mvt == 'static':
             self.obj_direction_prior = np.tile(np.append(np.zeros(len(self.directions)), 1),(self.n_objs,1))
         elif self.bias_bot_mvt == 'uniform':
@@ -31,7 +32,7 @@ class InferSelf:
     def reset_theories(self):
         self.theory_found = False
         self.theories = []
-        dirs = set([l2s(l) for l in self.directions]) # convert directions to string form
+        dirs = set(self.directions_str.copy())
         # list all theories
         for agent_id in range(self.n_objs):
             for dir0 in sorted(dirs):
@@ -100,6 +101,51 @@ class InferSelf:
 
     def compute_likelihood(self, theory, prev_obs, new_obs, action):
         # probability of data given theory
+        # product of the probability of observing each of the observed movements
+        agent_id = theory['agent_id']
+        action_dir = theory['input_mapping'][action]
+        current_map = prev_obs['map'].copy()
+        prev_obs = prev_obs['objects']
+        new_obs = new_obs['objects']
+        proba_movements = []  # list of probs for each movement
+
+        # compute likelihood of agent movement
+        prev_pos = prev_obs[agent_id]
+        next_pos = new_obs[agent_id]
+        predicted_pos = prev_pos + action_dir
+        if not self.env.unwrapped.is_empty(predicted_pos, agent=True, map=current_map):
+            predicted_pos = prev_pos
+        if not np.all(predicted_pos == next_pos):
+            return 0  # if theory cannot predict agent behavior, then likelihood is 0
+        else:
+            proba_movements.append(1)
+        # move the agent in the map
+        current_map[next_pos[0], next_pos[1]] = 4
+        current_map[prev_pos[0], prev_pos[1]] = 0
+
+        count_non_agent = 0
+        for obj_id, obj_prev_pos, obj_new_pos in zip(range(self.n_objs), prev_obs, new_obs):
+            if obj_id != agent_id:
+                mvt = obj_new_pos - obj_prev_pos  # observed movement
+                if np.sum(np.abs(mvt)) > 0:  # actual movement
+                    # the likelihood is the prior for that object and that movement
+                    proba_movements.append(self.obj_direction_prior[count_non_agent][self.directions_str.index(l2s(mvt))])
+                else: # if no actual movement, then it might be because the bot didn't move or because it was blocked
+                    # let's sum the prior probabilities of each movement when these movements are blocked by collisions
+                    probas_to_sum = [self.obj_direction_prior[count_non_agent][-1]]  # start with the proba of no movement
+                    for dir in self.directions:
+                        if self.obj_direction_prior[count_non_agent][self.directions_str.index(l2s(dir))] > 0:
+                            if not self.env.unwrapped.is_empty(obj_prev_pos + dir, agent=False, map=current_map):  # if the expected movement was possible, p=0
+                                probas_to_sum.append(self.obj_direction_prior[count_non_agent][self.directions_str.index(l2s(dir))])
+                    proba_movements.append(np.sum(probas_to_sum))
+                # add movement of that object in the map
+                current_map[obj_new_pos[0], obj_new_pos[1]] = 8
+                current_map[obj_prev_pos[0], obj_prev_pos[1]] = 0
+                count_non_agent += 1
+        return np.prod(proba_movements)
+
+
+
         weighted_obs = self.simulate(prev_obs, theory, action)
         return weighted_obs.get(dict2s(new_obs), 0)
 
@@ -152,56 +198,67 @@ class InferSelf:
     # thinking we might want a function like this (to run in update as well?) bc movememnts may be non-independent
     # ie if two objects run into each other
     # and for cases where we want our theory to include information about how all objects move
-    def get_next_positions(self, obs, movements):
-        temp_map = []
-        positions = []
-        for i, dir in enumerate(movements):
-            prev_pos = obs['objects'][i]
-            next_pos = prev_pos + dir
-            if not self.env.unwrapped.is_empty(next_pos, agent=True):
-                next_pos = prev_pos
-            positions.append(next_pos)
-        # should check if any objects occupy same space, and if so randomly choose n-1 to move back
-        """
-        for i, p1 in enumerate(positions):
-            for j, p2 in enumerate(positions):
-                if i != j:
-                    if p1==p2:
-                        loser = scipy.stats.bernoulli(0.5)
-                        positions[]
-        """
-        return positions
+    def get_next_positions(self, obs, movements, agent_id, map):
+        positions = [None for _ in range(len(movements))]
 
+        # update position of the agent
+        prev_pos_agent = obs['objects'][agent_id]
+        next_pos_agent = prev_pos_agent + movements[agent_id]
+        if not self.env.unwrapped.is_empty(next_pos_agent, agent=True, map=map):
+            next_pos_agent = prev_pos_agent
+        else:
+            # if agent moved, update the map
+            map[next_pos_agent[0], next_pos_agent[1]] = 4
+            map[prev_pos_agent[0], prev_pos_agent[1]] = 0
+        positions[agent_id] = next_pos_agent
+
+        # update positions of the bots
+        for i, dir in enumerate(movements):
+            if i != agent_id:
+                prev_pos = obs['objects'][i]
+                next_pos = prev_pos + dir
+                if not self.env.unwrapped.is_empty(next_pos, agent=True, map=map):
+                    next_pos = prev_pos
+                else:
+                    # update the map
+                    map[next_pos[0], next_pos[1]] = 8
+                    map[prev_pos[0], prev_pos[1]] = 0
+                positions[i] = next_pos
+        return map, positions
 
     # Given this theory and this action, what is the probability distribution over possible observations?
     def simulate(self, prev_obs, theory, action, sample=False):
         agent_id = theory['agent_id']
         action_dir = theory['input_mapping'][action]
+        current_map = prev_obs['map']
 
         # not specified by theory: movements of other objects
-        poss_movements = []
-        for i, obj in enumerate(prev_obs['objects']):
-            if i==agent_id:
-                obj_poss_movements = [(action_dir, 1)]
-            else:
-                obj_poss_movements = []
-                for dir_idx, p in enumerate(self.obj_direction_prior[i]):
-                    if dir_idx >= len(self.directions):
-                        dir = [0,0]
-                    else:
-                        dir = self.directions[dir_idx]
-                    if p > 0:
-                        obj_poss_movements.append((dir, p))
-            poss_movements.append(obj_poss_movements)   
-        poss_movements_and_probs = itertools.product(*poss_movements)
+        if self.args['sampling'] == 'exhaustive':
+            poss_movements = []
+            for i, obj_pos in enumerate(prev_obs['objects']):
+                if i==agent_id:
+                    obj_poss_movements = [(action_dir, 1)]
+                else:
+                    obj_poss_movements = []
+                    for dir_idx, p in enumerate(self.obj_direction_prior[i]):
+                        if p > 0:
+                            if dir_idx >= len(self.directions):
+                                dir = [0,0]
+                            else:
+                                dir = self.directions[dir_idx]
+                            obj_poss_movements.append((dir, p))
+                poss_movements.append(obj_poss_movements)
+            poss_movements_and_probs = itertools.product(*poss_movements)
+        else:
+            poss_move
         
         weighted_obs = {}
         for movements_and_probs in poss_movements_and_probs:
             movements = [x[0] for x in movements_and_probs]
             prob = np.prod([x[1] for x in movements_and_probs])
             assert(prob > 0)
-            positions = self.get_next_positions(prev_obs, movements)
-            obs = {'objects': positions, 'map': prev_obs['map'], 'goal': prev_obs['goal']}
+            map, positions = self.get_next_positions(prev_obs, movements, agent_id, current_map.copy())
+            obs = {'objects': positions, 'map': map, 'goal': prev_obs['goal']}
             weighted_obs[dict2s(obs)] = weighted_obs.get(dict2s(obs), 0) + prob
         # hypothetical obs weighted by probability
         return weighted_obs
@@ -244,7 +301,7 @@ class InferSelf:
 def dict2s(d):
     d2 = {}
     d2['goal'] = list(d['goal'])
-    d2['map'] = [list(row) for row in d['objects']]
+    d2['map'] = [list(row) for row in d['map']]
     d2['objects'] = [list(o) for o in d['objects']]
     return str(list(sorted(d2.items(), key=lambda x: x[0])))
 
