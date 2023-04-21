@@ -17,14 +17,10 @@ COLORS = {0: [0.0, 0.0, 0.0], 1: [0.5, 0.5, 0.5],
           9: [1.0, 0.0, 0.0], 10: [1.0, 0.0, 0.0]}
 
 
-DEFAULT_ARGS = dict(shuffle_keys=False,
-                    change_agent_every=7)
-
-
 class GridworldEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, game_type, args=DEFAULT_ARGS):
+    def __init__(self, game_type, shuffle_keys=False, change_agent_every=7):
         assert game_type in ['logic', 'logic_extended', 'logic_extended_h',
                              'contingency', 'contingency_extended',
                              'change_agent', 'change_agent_extended', 'change_agent_extended_1', 'change_agent_extended_2']
@@ -36,8 +32,8 @@ class GridworldEnv(gym.Env):
         self.action_space = spaces.Discrete(4)
         self.action_pos_dict = np.array([[-1, 0], [1, 0], [0, -1], [0, 1]])
 
-        self.shuffle_keys = args['shuffle_keys']  # whether to shuffle the action mapping between episode
-        self.change_agent_every = args['change_agent_every']
+        self.shuffle_keys = shuffle_keys  # whether to shuffle the action mapping between episode
+        self.change_agent_every = change_agent_every
 
         layout_path = os.path.dirname(os.path.realpath(__file__)) + '/' + self.game_type + '/'
         self.possible_layouts_paths = [layout_path + f for f in os.listdir(layout_path)]
@@ -49,17 +45,8 @@ class GridworldEnv(gym.Env):
             self.agent_start_locs = [[1, 1], [1, 7], [7, 1], [7, 7]]
         elif 'contingency' in self.game_type or 'change_agent' in self.game_type:
             self.agent_start_locs = [[6, 6], [6, 14], [14, 6], [14, 14]]
-
-
-            #
-            # self.perim = 3
-            # self.oscil_dirs = [np.random.randint(1), np.random.randint(1), np.random.randint(1)]  # whether to oscil ud (0) or lr (1)
-            #
-            # if 'extended' in self.game_type:
-            #     self.oscil_dirs.append(np.random.randint(1))
         self.fig = None
         self.reset()
-        stop = 1
 
     def reset(self):
 
@@ -332,15 +319,11 @@ def play(env):
                 running = False
 
 
-
 if __name__ == '__main__':
     from gym.envs.registration import register
-
     register(id='logic-v0',
              entry_point='src.gym_gridworld.envs:GridworldEnv',
              kwargs=dict(game_type='logic'))
-
     env = gym.make('logic-v0')
-
     play(env)
     stop = 1

@@ -1,29 +1,22 @@
-import time
 import numpy as np
-import matplotlib.pyplot as plt
 import itertools
 import scipy
 import gym
 import gym_gridworld
 from copy import deepcopy
 
-
-
-
 class InferSelf:
     def __init__(self, env, args):
         self.args = args
         self.n_objs = args['n_objs']
-        self.biased_input_mapping = args['biased_input_mapping']
-        self.bias_bot_mvt = args['bias_bot_mvt']
         self.env = env
 
         self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]
         self.directions_str = [l2s(l) for l in self.directions] # convert directions to string form
 
-        if self.bias_bot_mvt == 'static':
+        if self.args['bias_bot_mvt'] == 'static':
             self.obj_direction_prior = np.tile(np.append(np.zeros(len(self.directions)), 1),(self.n_objs,1))
-        elif self.bias_bot_mvt == 'uniform':
+        elif self.args['bias_bot_mvt'] == 'uniform':
             self.obj_direction_prior = np.full((self.n_objs, len(self.directions)+1), 1/(len(self.directions)+1))
         else:
             raise NotImplementedError
@@ -61,7 +54,7 @@ class InferSelf:
                 self.theories.append(new_theory)
         self.theories = np.array(self.theories)
         self.probas = np.ones(self.n_theories) / self.n_theories  # uniform probability distribution over theories
-        if self.biased_input_mapping:
+        if self.args['biased_input_mapping']:
             self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 1000
             self.probas /= self.probas.sum()
 
@@ -91,7 +84,6 @@ class InferSelf:
             return posteriors / posteriors.sum()
         # print(posteriors)
         self.probas = posteriors
-        self.probas = self.probas / self.probas.sum()  # renormalize the probabilities
 
         # delete theories with proba = 0
         if len(to_keep) == 0:  # something weird happened (eg avatar switch)
@@ -197,8 +189,6 @@ class InferSelf:
         # for each action, compute expected information gain
         action_scores = []
         for action in range(4):
-
-
             # simulate possible observations given this theory and action
             weighted_obs = self.simulate(prev_obs, action)
             # information gain for each possible observation, weighted by probability

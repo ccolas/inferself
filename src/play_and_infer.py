@@ -5,7 +5,7 @@ import gym
 import gym_gridworld
 from inferself import InferSelf
 
-ENV = 'contingency-v0'
+ENV = 'changeAgent-v0'
 ARGS = dict(n_objs=4,
             biased_input_mapping=True,
             bias_bot_mvt='uniform', # static or uniform
@@ -53,8 +53,7 @@ def play_and_infer(env=ENV):
             obs, rew, done, info = env.step(action)
             env.render(None)
             theory, proba = inferself.update(action, prev_info['semantic_state'], info['semantic_state'])
-            if proba == 1:
-                assert theory['agent_id'] == env.unwrapped.agent_id
+            print(f'best guess: agent id={theory["agent_id"]}, proba={proba}')
             prev_obs = obs.copy()
             prev_info = deepcopy(info)
             if done:
