@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+import itertools
+import scipy
 import gym
 import gym_gridworld
 
@@ -12,6 +13,7 @@ class InferSelf:
     def __init__(self, args=ARGS):
         self.n_objs = args['n_objs']
         self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]
+        self.obj_direction_prior = np.tile(np.append(np.zeros(len(self.directions)), 1),(self.n_objs,1))#np.full((self.n_objs, len(self.directions)+1), 1/(len(self.directions)+1))
         self.reset_memory()
         self.reset_theories()
 
@@ -43,7 +45,7 @@ class InferSelf:
         self.actions = []  # memory of past actions
         self.obj_pos = dict(zip(range(self.n_objs), [[] for _ in range(self.n_objs)]))  # memory of past movements for each object
 
-    def update(self, action, prev_obs, new_obs):
+    def update(self, action, prev_obs, new_obs, hypothetical=False):
         # TODO need to adapt new_obs here
         # we need the position of each object
         # we need the map
@@ -53,6 +55,7 @@ class InferSelf:
         for o_id in range(self.n_objs):
             self.obj_pos[o_id].append(new_obs['objects'][o_id])
 
+        posteriors = np.zeros(self.n_theories)
         # run inference for the new datapoint
         to_keep = []  # we keep track of theories with proba > 0
         for i_theory, theory in enumerate(self.theories):
@@ -67,11 +70,16 @@ class InferSelf:
             # likelihood is binary, either we observe what we expect (l=1) or we don't (l=0)
             likelihood = np.all(predicted_pos == obj_new_pos)
             posterior = self.probas[i_theory] * likelihood
-            self.probas[i_theory] = posterior
+            posteriors[i_theory] = posterior
             if posterior > 0:
                 to_keep.append(i_theory)
         to_keep = np.array(to_keep)
 
+
+        if hypothetical:
+            return posteriors / posteriors.sum()
+        print(posteriors)
+        self.probas = posteriors
         # delete theories with proba = 0
         if len(to_keep) == 0:  # something weird happened (eg avatar switch)
             print('Past evidence is not consistent, let\'s reset the theories')
@@ -96,7 +104,6 @@ class InferSelf:
         # there are two modes of actions
         # mode 1: the agent tries to infer which object it is and what the action mapping is in an optimal way
         # mode 2: the agent moves towards the goal
-
         if mode is None:
             if self.n_theories == 1: mode = 2
             else: mode = 1
@@ -106,24 +113,94 @@ class InferSelf:
         elif mode == 2:
             good_actions, action = self.exploit(obs)
         else: raise ValueError
-
         return action
 
-    def explore(self, obs):
-        # for each theory, we assume the theory and compare each of the four actions, their possible outcomes and compute the expected information gain resulting from taking
-        # these actions
+    def explore(self, prev_obs):
+        # for each action, compute expected information gain
         action_scores = []
         for action in range(4):
-            info_gains = []
+            weighted_obs = {}
+            # possible observations given this action, weighted by probability
             for i_theory, theory in enumerate(self.theories):
-                agent_id = theory['agent_id']
-                reverse_mapping = theory['action_reverse_mapping']
-                mapping = theory['input_mapping']
-                agent_pos = obs['objects'][agent_id]
-                action_dir = theory['input_mapping'][action]
-                # several things can happen here
-                # either the theory is true, and
-                # if self.is_collision(agent_pos, action_dir, obs['map']):
+                theory_prob = self.probas[i_theory]
+                # simulate possible observations given this theory and action
+                theory_weighted_obs = self.simulate(prev_obs, theory, action)
+                for obs, obs_prob in theory_weighted_obs.items():
+                    weighted_obs[obs] = weighted_obs.get(obs, 0) + (theory_prob * obs_prob)
+            # information gain for each possible observation, weighted by probability
+            assert (np.isclose(sum(weighted_obs.values()), 1))
+            exp_info_gain = 0
+            for obs_str, obs_prob in weighted_obs.items():
+                poss_obs = s2dict(obs_str)
+                new_probas = self.update(action, prev_obs, poss_obs, True)
+                info_gain = self.information_gain(self.probas, new_probas)
+                exp_info_gain += info_gain * obs_prob
+            action_scores.append(exp_info_gain)
+        return action_scores, np.argmax(action_scores)
+
+
+    def information_gain(self, p0, p1):
+        # errors in js distance with very small numbers
+        p0 = [round(x,5) for x in p0]
+        p1 = [round(x,5) for x in p1]
+        return scipy.spatial.distance.jensenshannon(p0, p1)
+
+        # given these actions and these objects, return directions of movemement
+    # thinking we might want a function like this (to run in update as well?) bc movememnts may be non-independent
+    # ie if two objects run into each other
+    # and for cases where we want our theory to include information about how all objects move
+    def get_next_positions(self, obs, movements):
+        positions = []
+        for i, dir in enumerate(movements):
+            prev_pos = obs['objects'][i]
+            if self.is_collision(prev_pos, dir, obs['map']):
+                positions.append(prev_pos)
+            else:
+                positions.append(prev_pos + dir)
+        # should check if any objects occupy same space, and if so randomly choose n-1 to move back
+        """
+        for i, p1 in enumerate(positions):
+            for j, p2 in enumerate(positions):
+                if i != j:
+                    if p1==p2:
+                        loser = scipy.stats.bernoulli(0.5)
+                        positions[]
+        """
+        return positions
+
+
+    # Given this theory and this action, what is the probability distribution over possible observations?
+    def simulate(self, prev_obs, theory, action):
+        agent_id = theory['agent_id']
+        action_dir = theory['input_mapping'][action]
+
+        # not specified by theory: movements of other objects
+        poss_movements = []
+        for i, obj in enumerate(prev_obs['objects']):
+            if i==agent_id:
+                obj_poss_movements = [(action_dir, 1)]
+            else:
+                obj_poss_movements = []
+                for dir_idx, p in enumerate(self.obj_direction_prior[i]):
+                    if dir_idx >= len(self.directions):
+                        dir = [0,0]
+                    else:
+                        dir = self.directions[dir_idx]
+                    if p > 0:
+                        obj_poss_movements.append((dir, p))
+            poss_movements.append(obj_poss_movements)   
+        poss_movements_and_probs = itertools.product(*poss_movements)
+        
+        weighted_obs = {}
+        for movements_and_probs in poss_movements_and_probs:
+            movements = [x[0] for x in movements_and_probs]
+            prob = np.prod([x[1] for x in movements_and_probs])
+            assert(prob > 0)
+            positions = self.get_next_positions(prev_obs, movements)
+            obs = {'objects': positions, 'map': prev_obs['map'], 'goal': prev_obs['goal']}
+            weighted_obs[dict2s(obs)] = weighted_obs.get(dict2s(obs), 0) + prob
+        # hypothetical obs weighted by probability
+        return weighted_obs
 
 
     def exploit(self, obs):
@@ -135,7 +212,7 @@ class InferSelf:
             i_theory = np.random.choice(np.arange(self.n_theories), p=self.probas)
 
         agent_id = self.theories[i_theory]['agent_id']
-        reverse_mapping = self.theories[i_theory]['input_reveerse_mapping']
+        reverse_mapping = self.theories[i_theory]['input_reverse_mapping']
 
         # compute direction between the agent and the goal
         agent_pos = obs['objects'][agent_id]
@@ -160,6 +237,23 @@ class InferSelf:
         desired_pos = obj_pos + action_dir
         return map[desired_pos[0], desired_pos[1]] not in [0, 3]
 
+def dict2s(d):
+    d2 = {}
+    d2['goal'] = list(d['goal'])
+    d2['map'] = [list(row) for row in d['objects']]
+    d2['objects'] = [list(o) for o in d['objects']]
+    return str(list(sorted(d2.items(), key=lambda x: x[0])))
+
+def s2dict(s):
+    l = eval(s)
+    d = {}
+    for (k,v) in l:
+        d[k] = v
+    d2 = {}
+    d2['goal'] = np.array(d['goal'])
+    d2['map'] = np.array([np.array(row) for row in d['map']])
+    d2['objects'] = [np.array(o) for o in d['objects']]
+    return d2
 
 def l2s(l):
     return f'{l[0]}_{l[1]}'

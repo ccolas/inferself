@@ -69,8 +69,6 @@ class GridworldEnv(gym.Env):
         with open(grid_map_path, 'r') as f:
             grid_map = f.readlines()
         self.start_grid_map = np.array([[int(el) for el in line.replace('\n', '').split(' ') ] for line in grid_map])
-        print(grid_map_path)
-
         # sample agent location
         agent_pos = self.agent_start_locs[np.random.randint(4)]
         self.start_grid_map[agent_pos[0], agent_pos[1]] = 4  # add it to the map
@@ -79,6 +77,8 @@ class GridworldEnv(gym.Env):
         self.goal_pos = self.get_pos(of_what='goal', map=self.start_grid_map)
         self_pos = self.get_pos(of_what='self', map=self.start_grid_map)
         self.candidates_pos = self.get_pos(of_what='candidates', map=self.start_grid_map)
+        #got idx out of bounds error
+        #should self pos only have 1 option?
         self.agent_id = np.argwhere([np.all(cpos == self_pos) for cpos in self.candidates_pos]).flatten()[0]
         self.start_grid_map[np.where(np.logical_and(self.start_grid_map != 1, self.start_grid_map != 0))] = 0  # only keep walls and empty cells
 
