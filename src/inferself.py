@@ -17,6 +17,7 @@ class InferSelf:
         self.biased_input_mapping = args['biased_input_mapping']
         self.bias_bot_mvt = args['bias_bot_mvt']
         self.env = env
+
         self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]
         if self.bias_bot_mvt == 'static':
             self.obj_direction_prior = np.tile(np.append(np.zeros(len(self.directions)), 1),(self.n_objs,1))
@@ -55,11 +56,8 @@ class InferSelf:
         self.actions = []  # memory of past actions
         self.obj_pos = dict(zip(range(self.n_objs), [[] for _ in range(self.n_objs)]))  # memory of past movements for each object
 
+    # likelihood: prob of new_obs from prev_obs given theory
     def update(self, action, prev_obs, new_obs, hypothetical=False):
-        # TODO need to adapt new_obs here
-        # we need the position of each object
-        # we need the map
-
         # store new info
         self.actions.append(action)
         for o_id in range(self.n_objs):
@@ -69,21 +67,12 @@ class InferSelf:
         # run inference for the new datapoint
         to_keep = []  # we keep track of theories with proba > 0
         for i_theory, theory in enumerate(self.theories):
-            obj_new_pos = new_obs['objects'][theory['agent_id']]
-            obj_prev_pos = prev_obs['objects'][theory['agent_id']]
-            action_dir = np.array(theory['input_mapping'][action])
-            # in case of collision, the theory predicts no mvt
-            predicted_pos = obj_prev_pos + action_dir
-            if not self.env.unwrapped.is_empty(predicted_pos, agent=True):
-                predicted_pos = obj_prev_pos
-            # likelihood is binary, either we observe what we expect (l=1) or we don't (l=0)
-            likelihood = np.all(predicted_pos == obj_new_pos)
+            likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
             posterior = self.probas[i_theory] * likelihood
             posteriors[i_theory] = posterior
             if posterior > 0:
                 to_keep.append(i_theory)
         to_keep = np.array(to_keep)
-
 
         if hypothetical:
             return posteriors / posteriors.sum()
@@ -108,6 +97,11 @@ class InferSelf:
         else:
             theory_id = np.random.choice(np.arange(self.n_theories), p=self.probas)
             return self.theories[theory_id], self.probas[theory_id]
+
+    def compute_likelihood(self, theory, prev_obs, new_obs, action):
+        # probability of data given theory
+        weighted_obs = self.simulate(prev_obs, theory, action)
+        return weighted_obs.get(dict2s(new_obs), 0)
 
     def get_action(self, obs, mode=None):
         # there are two modes of actions
@@ -154,11 +148,12 @@ class InferSelf:
         p1 = [round(x,5) for x in p1]
         return scipy.spatial.distance.jensenshannon(p0, p1)
 
-        # given these actions and these objects, return directions of movemement
+    # given these actions and these objects, return directions of movemement
     # thinking we might want a function like this (to run in update as well?) bc movememnts may be non-independent
     # ie if two objects run into each other
     # and for cases where we want our theory to include information about how all objects move
     def get_next_positions(self, obs, movements):
+        temp_map = []
         positions = []
         for i, dir in enumerate(movements):
             prev_pos = obs['objects'][i]
@@ -179,7 +174,7 @@ class InferSelf:
 
 
     # Given this theory and this action, what is the probability distribution over possible observations?
-    def simulate(self, prev_obs, theory, action):
+    def simulate(self, prev_obs, theory, action, sample=False):
         agent_id = theory['agent_id']
         action_dir = theory['input_mapping'][action]
 
