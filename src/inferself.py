@@ -5,16 +5,25 @@ import scipy
 import gym
 import gym_gridworld
 
-ARGS = dict(n_objs=4)
+ARGS = dict(n_objs=4,
+            biased_input_mapping=False,
+            bias_bot_mvt='static')
 
 
 
 class InferSelf:
-    def __init__(self, args=ARGS):
+    def __init__(self, env, args=ARGS):
         self.n_objs = args['n_objs']
+        self.biased_input_mapping = args['biased_input_mapping']
+        self.bias_bot_mvt = args['bias_bot_mvt']
+        self.env = env
         self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]
-        # self.obj_direction_prior = np.tile(np.append(np.zeros(len(self.directions)), 1),(self.n_objs,1))
-        self.obj_direction_prior = np.full((self.n_objs, len(self.directions)+1), 1/(len(self.directions)+1))
+        if self.bias_bot_mvt == 'static':
+            self.obj_direction_prior = np.tile(np.append(np.zeros(len(self.directions)), 1),(self.n_objs,1))
+        elif self.bias_bot_mvt == 'uniform':
+            self.obj_direction_prior = np.full((self.n_objs, len(self.directions)+1), 1/(len(self.directions)+1))
+        else:
+            raise NotImplementedError
         self.reset_memory()
         self.reset_theories()
 
@@ -22,6 +31,7 @@ class InferSelf:
         self.theory_found = False
         self.theories = []
         dirs = set([l2s(l) for l in self.directions]) # convert directions to string form
+        # list all theories
         for agent_id in range(self.n_objs):
             for dir0 in sorted(dirs):
                 remaining_dirs0 = dirs - set([dir0])
@@ -36,13 +46,10 @@ class InferSelf:
                                               input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3})
                             self.theories.append(new_theory)
         self.theories = np.array(self.theories)
-        self.probas = np.ones(self.n_theories) / self.n_theories
-        self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 5
-        self.probas /= self.probas.sum()
-
-    @property
-    def n_theories(self):
-        return len(self.theories)
+        self.probas = np.ones(self.n_theories) / self.n_theories  # uniform probability distribution over theories
+        if self.biased_input_mapping:
+            self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 5
+            self.probas /= self.probas.sum()
 
     def reset_memory(self):
         self.actions = []  # memory of past actions
@@ -66,9 +73,8 @@ class InferSelf:
             obj_prev_pos = prev_obs['objects'][theory['agent_id']]
             action_dir = np.array(theory['input_mapping'][action])
             # in case of collision, the theory predicts no mvt
-            if not self.is_collision(obj_prev_pos, action_dir, prev_obs['map']):
-                predicted_pos = obj_prev_pos + action_dir
-            else:
+            predicted_pos = obj_prev_pos + action_dir
+            if not self.env.unwrapped.is_empty(predicted_pos, agent=True):
                 predicted_pos = obj_prev_pos
             # likelihood is binary, either we observe what we expect (l=1) or we don't (l=0)
             likelihood = np.all(predicted_pos == obj_new_pos)
@@ -156,10 +162,10 @@ class InferSelf:
         positions = []
         for i, dir in enumerate(movements):
             prev_pos = obs['objects'][i]
-            if self.is_collision(prev_pos, dir, obs['map']):
-                positions.append(prev_pos)
-            else:
-                positions.append(prev_pos + dir)
+            next_pos = prev_pos + dir
+            if not self.env.unwrapped.is_empty(next_pos, agent=True):
+                next_pos = prev_pos
+            positions.append(next_pos)
         # should check if any objects occupy same space, and if so randomly choose n-1 to move back
         """
         for i, p1 in enumerate(positions):
@@ -236,9 +242,9 @@ class InferSelf:
 
         return good_actions, action
 
-    def is_collision(self, obj_pos, action_dir, map):
-        desired_pos = obj_pos + action_dir
-        return map[desired_pos[0], desired_pos[1]] not in [0, 3]
+    @property
+    def n_theories(self):
+        return len(self.theories)
 
 def dict2s(d):
     d2 = {}
