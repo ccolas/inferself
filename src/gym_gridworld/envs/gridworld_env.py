@@ -94,6 +94,7 @@ class GridworldEnv(gym.Env):
         if ('contingency' in self.game_type or 'change' in self.game_type) and ('extended_1' in self.game_type or 'extended_2' in self.game_type):
             self.mock_location = np.random.choice([[10, 6], [6, 10], [10, 14], [14, 10]])
 
+        self.contingency_directions = np.random.randint(1, size=len(self.candidates_pos))
         self.semantic_state = self.get_semantic_state()
         return self.observation, dict(semantic_state=deepcopy(self.semantic_state))
 
@@ -145,9 +146,11 @@ class GridworldEnv(gym.Env):
         info['semantic_state'] = deepcopy(self.semantic_state)
         return new_obs, rew, done, info
 
-    def is_empty(self, pos):
-
-        return self.current_grid_map[pos[0], pos[1]] in [0, 3]
+    def is_empty(self, pos, agent=False):
+        # checks whether the position is empty in the current map. If the agent, the goal is considered as an empty location
+        if agent: empty = [0, 3]
+        else: empty = [0]
+        return self.current_grid_map[int(pos[0]), int(pos[1])] in empty
 
     def step_logic(self, action):
         action = int(action)
@@ -157,7 +160,7 @@ class GridworldEnv(gym.Env):
 
         # update agent pos first
         next_agent_pos = self.candidates_pos[self.agent_id] + self.action_pos_dict[action]
-        if self.is_empty(next_agent_pos):
+        if self.is_empty(next_agent_pos, agent=True):
             new_candidates_pos[self.agent_id] = next_agent_pos
             if np.all(next_agent_pos == self.goal_pos):
                 info['success'] = True
@@ -188,21 +191,29 @@ class GridworldEnv(gym.Env):
         new_candidates_pos = [None for _ in range(len(self.candidates_pos))]
 
         # update agent pos first
-        next_agent_pos = self.candidates_pos[self.agent_id] + self.action_pos_dict[action]
-        if self.is_empty(next_agent_pos):
+        current_agent_pos = self.candidates_pos[self.agent_id]
+        next_agent_pos = current_agent_pos + self.action_pos_dict[action]
+        if self.is_empty(next_agent_pos, agent=True):
             new_candidates_pos[self.agent_id] = next_agent_pos
             if np.all(next_agent_pos == self.goal_pos):
                 info['success'] = True
+            # update position of the agent in the current map
+            self.current_grid_map[current_agent_pos[0], current_agent_pos[1]] = 0
+            self.current_grid_map[next_agent_pos[0], next_agent_pos[1]] = 4
         else:
             new_candidates_pos[self.agent_id] = self.candidates_pos[self.agent_id]
 
         # update other  pos
-        possible_directions = [[0, 1], [1, 0], [-1, 0], [0, -1]]
         for i_candidate, candidate_pos in enumerate(self.candidates_pos):
             if i_candidate != self.agent_id:
-                next_pos = candidate_pos + possible_directions[np.random.choice(np.arange(len(possible_directions)))]
-                if self.is_empty(next_pos) and not self.pos_in_list(next_pos, new_candidates_pos):
+                mvt = np.zeros(2)
+                mvt[self.contingency_directions[i_candidate]] = np.random.choice([-1, 1])
+                next_pos = (candidate_pos + mvt).astype(int)
+                if self.is_empty(next_pos):
                     new_candidates_pos[i_candidate] = next_pos
+                    # update position of the agent in the current map
+                    self.current_grid_map[candidate_pos[0], candidate_pos[1]] = 0
+                    self.current_grid_map[next_pos[0], next_pos[1]] = 8
                 else:
                     new_candidates_pos[i_candidate] = self.candidates_pos[i_candidate]
         self.candidates_pos = new_candidates_pos.copy()
@@ -222,11 +233,15 @@ class GridworldEnv(gym.Env):
         new_candidates_pos = [None for _ in range(len(self.candidates_pos))]
 
         # update agent pos first
-        next_agent_pos = self.candidates_pos[self.agent_id] + self.action_pos_dict[action]
-        if self.is_empty(next_agent_pos):
+        current_agent_pos = self.candidates_pos[self.agent_id]
+        next_agent_pos = current_agent_pos + self.action_pos_dict[action]
+        if self.is_empty(next_agent_pos, agent=True):
             new_candidates_pos[self.agent_id] = next_agent_pos
             if np.all(next_agent_pos == self.goal_pos):
                 info['success'] = True
+            # update position of the agent in the current map
+            self.current_grid_map[current_agent_pos[0], current_agent_pos[1]] = 0
+            self.current_grid_map[next_agent_pos[0], next_agent_pos[1]] = 4
         else:
             new_candidates_pos[self.agent_id] = self.candidates_pos[self.agent_id]
 
@@ -234,11 +249,16 @@ class GridworldEnv(gym.Env):
         possible_directions = [[0, 1], [1, 0], [-1, 0], [0, -1]]
         for i_candidate, candidate_pos in enumerate(self.candidates_pos):
             if i_candidate != self.agent_id:
-                next_pos = candidate_pos + possible_directions[np.random.choice(np.arange(len(possible_directions)))]
+                mvt = np.zeros(2)
+                mvt[self.contingency_directions[i_candidate]] = np.random.choice([-1, 1])
+                next_pos = (candidate_pos + mvt).astype(int)
                 if self.is_empty(next_pos) and not self.pos_in_list(next_pos, new_candidates_pos):
                     new_candidates_pos[i_candidate] = next_pos
+                    # update position of the agent in the current map
+                    self.current_grid_map[candidate_pos[0], candidate_pos[1]] = 0
+                    self.current_grid_map[next_pos[0], next_pos[1]] = 8
                 else:
-                    new_candidates_pos[i_candidate] = self.candidates_pos[i_candidate]
+                    new_candidates_pos[i_candidate] = candidate_pos
         self.candidates_pos = new_candidates_pos.copy()
 
         self.build_current_map()
