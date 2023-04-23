@@ -5,11 +5,11 @@ import gym
 import gym_gridworld
 from inferself import InferSelf
 
-ENV = 'contingency-v0'
+ENV = 'logic-v0'
 ARGS = dict(n_objs=4,
             biased_input_mapping=True,
             bias_bot_mvt='uniform', # static or uniform
-            simulation='sampling',  # exhaustive or sampling
+            simulation='exhaustive',  # exhaustive or sampling
             n_simulations=50,  # number of simulations if sampling
             infer_mapping=True,
             )
