@@ -68,7 +68,7 @@ class InferSelf:
         for o_id in range(self.n_objs):
             self.obj_pos[o_id].append(new_obs['objects'][o_id])
 
-        posteriors = self.compute_posteriors(prev_obs, new_obs, action)
+        posteriors = self.compute_posteriors(prev_obs, new_obs, self.probas, action)
         to_keep = np.where(posteriors > 0)
 
         self.probas = posteriors
@@ -106,12 +106,12 @@ class InferSelf:
             probs[id] = 0
 
 
-    def compute_posteriors(self, prev_obs, new_obs, action):
+    def compute_posteriors(self, prev_obs, new_obs, probas, action):
         # run inference for the new datapoint
         posteriors = np.zeros(self.n_theories)
         for i_theory, theory in enumerate(self.theories):
             likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
-            posterior = self.probas[i_theory] * likelihood
+            posterior = probas[i_theory] * likelihood
             posteriors[i_theory] = posterior
         return posteriors / posteriors.sum()
 
@@ -157,6 +157,13 @@ class InferSelf:
                 current_map[new_pos[0], new_pos[1]] = 8
         return np.prod(proba_movements)
 
+    def get_agent_probabilities(self, theories, probs):
+        agent_probs = {}
+        for i, t in enumerate(theories):
+            id = t['agent_id']
+            agent_probs[id] = agent_probs.get(id, 0) + probs[i]
+        return agent_probs
+
     def get_action(self, obs, mode=None):
         # there are two modes of actions
         # mode 1: the agent tries to infer which object it is and what the action mapping is in an optimal way
@@ -164,7 +171,9 @@ class InferSelf:
         if mode is None:
             # decide whether to explore or exploit
             #if self.n_theories == 1:
-            if len(set([t['agent_id'] for t in self.theories])) == 1:
+            threshold = 0.9
+            agent_probs = self.get_agent_probabilities(self.theories, self.probas)
+            if sorted(agent_probs.items(), key=lambda x: x[1], reverse=True)[0][1] >= threshold:
                 mode = 2
             else:
                 mode = 1
@@ -185,18 +194,49 @@ class InferSelf:
         else: raise ValueError
         return action
 
-    def explore(self, prev_obs):
+    def explore_multiple(self, prev_obs, n=2):
+        actions = range(4)
+        probas = self.probas
+        #we want to store action seq, poss obs, posterior given that poss obs
+        #list of tuples of action seq, poss obs, posterior
+        frontier = [([], dict2s(prev_obs), self.probas, 1)]
+        for _ in range(n):
+            new_frontier = []
+            for action in actions:
+                poss_obs_1 = {}
+                # simulate possible observations given this theory and action
+                for (action_seq, prev_obs, theory_probas, prev_obs_proba) in frontier:
+                    weighted_obs = self.simulate(s2dict(prev_obs), action, self.theories, theory_probas)
+                    #update new frontier with action seq, obs
+                    for new_obs, new_obs_proba in weighted_obs.items():
+                        new_theory_probas = self.compute_posteriors(s2dict(prev_obs), s2dict(new_obs), theory_probas, action)
+                        new_frontier.append((action_seq + [action], new_obs, new_theory_probas, new_obs_proba * prev_obs_proba))
+            frontier = new_frontier
+        action_seq_scores = {}
+        for (action_seq, prev_obs, theory_probas, prev_obs_proba) in frontier:
+            action_seq_str = l2s(action_seq)
+            info_gain = self.information_gain(self.probas, theory_probas)
+            action_seq_scores[action_seq_str] = action_seq_scores.get(action_seq_str, 0) + (prev_obs_proba * info_gain)
+        action_seq_scores = list(action_seq_scores.items())
+        max_score = np.max([x[1] for x in action_seq_scores])
+        good_seqs = [s2l(x[0]) for x in action_seq_scores if x[1]==max_score]
+        good_actions = [x[0] for x in good_seqs]
+        return good_actions, good_actions[0]
+
+    def explore(self, prev_obs, look_ahead=False):
+        if look_ahead:
+            return self.explore_multiple(prev_obs)
         # for each action, compute expected information gain
         action_scores = []
         for action in range(4):
             # simulate possible observations given this theory and action
-            weighted_obs = self.simulate(prev_obs, action)
+            weighted_obs = self.simulate(prev_obs, action, self.theories, self.probas)
             # information gain for each possible observation, weighted by probability
             assert (np.isclose(sum(weighted_obs.values()), 1))
             exp_info_gain = 0
             for obs_str, obs_prob in weighted_obs.items():
                 poss_obs = s2dict(obs_str)
-                new_probas = self.compute_posteriors(prev_obs, poss_obs, action)
+                new_probas = self.compute_posteriors(prev_obs, poss_obs, self.probas, action)
                 info_gain = self.information_gain(self.probas, new_probas)
                 exp_info_gain += info_gain * obs_prob
             action_scores.append(exp_info_gain)
@@ -237,13 +277,13 @@ class InferSelf:
         else:
             return prev_pos
 
-    def simulate(self, prev_obs, action):
+    def simulate(self, prev_obs, action, theories, probas):
         # given all theories about world and this action, what is the probability distribution over possible observations?
         weighted_obs = {}
         if self.args['simulation'] == 'exhaustive':
             # all possible observations given this action, weighted by probability
-            for i_theory, theory in enumerate(self.theories):
-                theory_prob = self.probas[i_theory]
+            for i_theory, theory in enumerate(theories):
+                theory_prob = probas[i_theory]
                 agent_id = theory['agent_id']
                 action_dir = theory['input_mapping'][action]
                 # obj positions are non-independent due to collisions
@@ -270,10 +310,10 @@ class InferSelf:
         
         elif self.args['simulation'] == 'sampling':
             # sample observations (theory and bot movements) 
-            theory_ids = np.random.choice(np.arange(self.n_theories), p=self.probas, size=self.args['n_simulations'])
+            theory_ids = np.random.choice(np.arange(len(theories)), p=probas, size=self.args['n_simulations'])
             prob = 1 / self.args['n_simulations']
             for theory_id in theory_ids:
-                theory = self.theories[theory_id]
+                theory = theories[theory_id]
                 agent_id = theory['agent_id']
                 action_dir = theory['input_mapping'][action]
                 intended_movements = []
