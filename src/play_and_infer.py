@@ -5,7 +5,7 @@ import gym
 import gym_gridworld
 from inferself import InferSelf
 
-ENV = 'changeAgent-v0'
+ENV = 'logic-v0'
 ARGS = dict(n_objs=4,
             biased_input_mapping=True,
             bias_bot_mvt='uniform', # static or uniform

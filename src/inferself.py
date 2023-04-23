@@ -113,7 +113,9 @@ class InferSelf:
             likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
             posterior = probas[i_theory] * likelihood
             posteriors[i_theory] = posterior
-        return posteriors / posteriors.sum()
+        if posteriors.sum() > 0:
+            posteriors = posteriors / posteriors.sum()
+        return posteriors
 
     def compute_likelihood(self, theory, prev_obs, new_obs, action):
         # probability of data (object positions) given theory and action
@@ -178,7 +180,7 @@ class InferSelf:
             else:
                 mode = 1
 
-        good_actions_explore, action_explore = self.explore(obs)
+        good_actions_explore, action_explore = self.explore(obs, True)
         good_actions_exploit, action_exploit = self.exploit(obs)
 
         # if exploring and several actions are best, take the one advised by exploit
@@ -193,35 +195,6 @@ class InferSelf:
 
         else: raise ValueError
         return action
-
-    def explore_multiple(self, prev_obs, n=2):
-        actions = range(4)
-        probas = self.probas
-        #we want to store action seq, poss obs, posterior given that poss obs
-        #list of tuples of action seq, poss obs, posterior
-        frontier = [([], dict2s(prev_obs), self.probas, 1)]
-        for _ in range(n):
-            new_frontier = []
-            for action in actions:
-                poss_obs_1 = {}
-                # simulate possible observations given this theory and action
-                for (action_seq, prev_obs, theory_probas, prev_obs_proba) in frontier:
-                    weighted_obs = self.simulate(s2dict(prev_obs), action, self.theories, theory_probas)
-                    #update new frontier with action seq, obs
-                    for new_obs, new_obs_proba in weighted_obs.items():
-                        new_theory_probas = self.compute_posteriors(s2dict(prev_obs), s2dict(new_obs), theory_probas, action)
-                        new_frontier.append((action_seq + [action], new_obs, new_theory_probas, new_obs_proba * prev_obs_proba))
-            frontier = new_frontier
-        action_seq_scores = {}
-        for (action_seq, prev_obs, theory_probas, prev_obs_proba) in frontier:
-            action_seq_str = l2s(action_seq)
-            info_gain = self.information_gain(self.probas, theory_probas)
-            action_seq_scores[action_seq_str] = action_seq_scores.get(action_seq_str, 0) + (prev_obs_proba * info_gain)
-        action_seq_scores = list(action_seq_scores.items())
-        max_score = np.max([x[1] for x in action_seq_scores])
-        good_seqs = [s2l(x[0]) for x in action_seq_scores if x[1]==max_score]
-        good_actions = [x[0] for x in good_seqs]
-        return good_actions, good_actions[0]
 
     def explore(self, prev_obs, look_ahead=False):
         if look_ahead:
@@ -243,6 +216,36 @@ class InferSelf:
         max_score = np.max(action_scores)
         return np.argwhere(action_scores == max_score).flatten(), np.argmax(action_scores)
 
+    def explore_multiple(self, prev_obs, n=2, sampling=True):
+        # compute expected information gian for n>1 step action sequences
+        actions = range(4)
+        frontier = [([], dict2s(prev_obs), self.probas, 1)]
+        for _ in range(n):
+            new_frontier = []
+            for action in actions:
+                # simulate possible observations given this theory and action
+                for (action_seq, prev_obs, theory_probas, prev_obs_proba) in frontier:
+                    weighted_obs = self.simulate(s2dict(prev_obs), action, self.theories, theory_probas)
+                    #update new frontier with action seq, obs
+                    if sampling: #if sampling, just take most likely obs
+                        (new_obs, new_obs_proba) = sorted(weighted_obs.items(), key=lambda x: x[1], reverse=True)[0]
+                        new_theory_probas = self.compute_posteriors(s2dict(prev_obs), s2dict(new_obs), theory_probas, action)
+                        new_frontier.append((action_seq + [action], new_obs, new_theory_probas, new_obs_proba * prev_obs_proba))
+                    else:
+                        for new_obs, new_obs_proba in weighted_obs.items(): #integrate over all possible obs
+                            new_theory_probas = self.compute_posteriors(s2dict(prev_obs), s2dict(new_obs), theory_probas, action)
+                            new_frontier.append((action_seq + [action], new_obs, new_theory_probas, new_obs_proba * prev_obs_proba))
+            frontier = new_frontier
+        action_seq_scores = {}
+        for (action_seq, prev_obs, theory_probas, prev_obs_proba) in frontier:
+            action_seq_str = l2s(action_seq)
+            info_gain = self.information_gain(self.probas, theory_probas)
+            action_seq_scores[action_seq_str] = action_seq_scores.get(action_seq_str, 0) + (prev_obs_proba * info_gain)
+        action_seq_scores = list(action_seq_scores.items())
+        max_score = np.max([x[1] for x in action_seq_scores])
+        good_seqs = [s2l(x[0]) for x in action_seq_scores if x[1]==max_score]
+        good_actions = [x[0] for x in good_seqs]
+        return good_actions, good_actions[0]
 
     def information_gain(self, p0, p1):
         # errors in js distance with very small numbers
