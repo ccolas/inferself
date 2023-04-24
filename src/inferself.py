@@ -93,7 +93,7 @@ class InferSelf:
             self.theory_found = True
             return self.theories[0], 1
         else:
-            theory_id = np.random.choice(np.arange(self.n_theories), p=self.probas)
+            theory_id = np.argmax(self.probas)
             return self.theories[theory_id], self.probas[theory_id]
 
 
@@ -173,9 +173,8 @@ class InferSelf:
         if mode is None:
             # decide whether to explore or exploit
             #if self.n_theories == 1:
-            threshold = 0.9
             agent_probs = self.get_agent_probabilities(self.theories, self.probas)
-            if sorted(agent_probs.items(), key=lambda x: x[1], reverse=True)[0][1] >= threshold:
+            if sorted(agent_probs.items(), key=lambda x: x[1], reverse=True)[0][1] >= self.args['threshold']:
                 mode = 2
             else:
                 mode = 1
@@ -353,7 +352,7 @@ class InferSelf:
         if self.n_theories == 1:  # if one theory, pick that one
             i_theory = 0
         else:  # if several theories, sample one according to the probabilities
-            i_theory = np.random.choice(np.arange(self.n_theories), p=self.probas)
+            i_theory = np.argmax(self.probas)
 
         agent_id = self.theories[i_theory]['agent_id']
         reverse_mapping = self.theories[i_theory]['input_reverse_mapping']

@@ -5,13 +5,14 @@ import gym
 import gym_gridworld
 from inferself import InferSelf
 
-ENV = 'logic-v0'
+ENV = 'change-v0'
 ARGS = dict(n_objs=4,
             biased_input_mapping=True,
             bias_bot_mvt='uniform', # static or uniform
             simulation='sampling',  # exhaustive or sampling
             n_simulations=50,  # number of simulations if sampling
             infer_mapping=True,
+            threshold=0.9, # confidence threshold for agent id
             )
 
 def play_and_infer(env=ENV):
