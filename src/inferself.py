@@ -180,7 +180,7 @@ class InferSelf:
             else:
                 mode = 1
 
-        good_actions_explore, action_explore = self.explore(obs, True)
+        good_actions_explore, action_explore = self.explore(obs)
         good_actions_exploit, action_exploit = self.exploit(obs)
 
         # if exploring and several actions are best, take the one advised by exploit
@@ -220,6 +220,7 @@ class InferSelf:
         # compute expected information gian for n>1 step action sequences
         actions = range(4)
         frontier = [([], dict2s(prev_obs), self.probas, 1)]
+        scored_seqs = [frontier]
         for _ in range(n):
             new_frontier = []
             for action in actions:
@@ -227,24 +228,34 @@ class InferSelf:
                 for (action_seq, prev_obs, theory_probas, prev_obs_proba) in frontier:
                     weighted_obs = self.simulate(s2dict(prev_obs), action, self.theories, theory_probas)
                     #update new frontier with action seq, obs
-                    if sampling: #if sampling, just take most likely obs
-                        (new_obs, new_obs_proba) = sorted(weighted_obs.items(), key=lambda x: x[1], reverse=True)[0]
-                        new_theory_probas = self.compute_posteriors(s2dict(prev_obs), s2dict(new_obs), theory_probas, action)
-                        new_frontier.append((action_seq + [action], new_obs, new_theory_probas, new_obs_proba * prev_obs_proba))
+                    if sampling: #sample probable obs 
+                        weighted_obs = list(weighted_obs.items())
+                        sample_idxs = np.random.choice(np.arange(len(weighted_obs)), p=[x[1] for x in weighted_obs], size=5)
+                        for idx in sample_idxs:
+                            new_obs = weighted_obs[idx][0]
+                            new_obs_proba = 1/len(sample_idxs)
+                            new_theory_probas = self.compute_posteriors(s2dict(prev_obs), s2dict(new_obs), theory_probas, action)
+                            new_frontier.append((action_seq + [action], new_obs, new_theory_probas, new_obs_proba * prev_obs_proba))
                     else:
                         for new_obs, new_obs_proba in weighted_obs.items(): #integrate over all possible obs
                             new_theory_probas = self.compute_posteriors(s2dict(prev_obs), s2dict(new_obs), theory_probas, action)
                             new_frontier.append((action_seq + [action], new_obs, new_theory_probas, new_obs_proba * prev_obs_proba))
             frontier = new_frontier
+            scored_seqs.append(frontier)
         action_seq_scores = {}
-        for (action_seq, prev_obs, theory_probas, prev_obs_proba) in frontier:
-            action_seq_str = l2s(action_seq)
-            info_gain = self.information_gain(self.probas, theory_probas)
-            action_seq_scores[action_seq_str] = action_seq_scores.get(action_seq_str, 0) + (prev_obs_proba * info_gain)
+        for frontier in scored_seqs: #list of frontiers at each seq length
+            for (action_seq, prev_obs, theory_probas, prev_obs_proba) in frontier: #frontier holds action seqs and estimated resulting theory probabilities
+                action_seq_str = str(action_seq)
+                info_gain = self.information_gain(self.probas, theory_probas)
+                action_seq_scores[action_seq_str] = action_seq_scores.get(action_seq_str, 0) + (prev_obs_proba * info_gain)
         action_seq_scores = list(action_seq_scores.items())
+        #get action sequences with greatest expected information gain
         max_score = np.max([x[1] for x in action_seq_scores])
-        good_seqs = [s2l(x[0]) for x in action_seq_scores if x[1]==max_score]
-        good_actions = [x[0] for x in good_seqs]
+        good_seqs = [x[0] for x in action_seq_scores if x[1]==max_score]
+        #seq length as a tie breaker
+        min_length = np.min([len(seq) for seq in good_seqs])
+        good_seqs = [seq for seq in good_seqs if len(seq)==min_length]
+        good_actions = [eval(x)[0] for x in good_seqs]
         return good_actions, good_actions[0]
 
     def information_gain(self, p0, p1):
