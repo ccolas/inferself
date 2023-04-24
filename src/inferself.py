@@ -69,10 +69,8 @@ class InferSelf:
             self.obj_pos[o_id].append(new_obs['objects'][o_id])
 
         posteriors = self.compute_posteriors(prev_obs, new_obs, self.probas, action)
-        to_keep = np.where(posteriors > 0)
-
+        to_keep = np.where(posteriors > 0)[0]
         self.probas = posteriors
-
         # delete theories with proba = 0
         if len(to_keep) == 0:  # something weird happened (eg avatar switch)
             print('Past evidence is not consistent, let\'s reset the theories')
