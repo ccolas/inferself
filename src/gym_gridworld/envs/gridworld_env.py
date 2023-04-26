@@ -20,7 +20,7 @@ COLORS = {0: [0.0, 0.0, 0.0], 1: [0.5, 0.5, 0.5],
 class GridworldEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, game_type, shuffle_keys=False, change_agent_every=7):
+    def __init__(self, game_type, noise=0, shuffle_keys=False, change_agent_every=15):
         assert game_type in ['logic', 'logic_extended', 'logic_extended_h',
                              'contingency', 'contingency_extended',
                              'change_agent', 'change_agent_extended', 'change_agent_extended_1', 'change_agent_extended_2']
@@ -31,8 +31,10 @@ class GridworldEnv(gym.Env):
         self.actions = [0, 1, 2, 3]
         self.action_space = spaces.Discrete(4)
         self.action_pos_dict = np.array([[-1, 0], [1, 0], [0, -1], [0, 1]])
+        self.action_names =  ['up', 'down', 'left', 'right']
 
         self.shuffle_keys = shuffle_keys  # whether to shuffle the action mapping between episode
+        self.noise = noise
         self.change_agent_every = change_agent_every
 
         layout_path = os.path.dirname(os.path.realpath(__file__)) + '/' + self.game_type + '/'
@@ -76,7 +78,10 @@ class GridworldEnv(gym.Env):
 
         # shuffle action mapping
         if self.shuffle_keys:
-            np.random.shuffle(self.action_pos_dict)
+            action_indices = np.arange(4)
+            np.random.shuffle(action_indices)
+            self.action_pos_dict = [self.action_pos_dict[i] for i in action_indices]
+            self.action_names = [self.action_names[i] for i in action_indices]
 
         if ('contingency' in self.game_type or 'change' in self.game_type) and ('extended_1' in self.game_type or 'extended_2' in self.game_type):
             self.mock_location = np.random.choice([[10, 6], [6, 10], [10, 14], [14, 10]])
@@ -84,6 +89,9 @@ class GridworldEnv(gym.Env):
         self.contingency_directions = np.random.randint(1, size=len(self.candidates_pos))
         self.semantic_state = self.get_semantic_state()
         return self.observation, dict(semantic_state=deepcopy(self.semantic_state))
+
+    def get_action_name(self, action_id):
+        return self.action_names[action_id]
 
     def get_semantic_state(self):
         semantic_state = dict(objects=self.candidates_pos,
@@ -147,7 +155,16 @@ class GridworldEnv(gym.Env):
         new_candidates_pos = [None for _ in range(len(self.candidates_pos))]
 
         # update agent pos first
-        next_agent_pos = self.candidates_pos[self.agent_id] + self.action_pos_dict[action]
+        if np.random.rand() < self.noise:
+            candidate_actions = sorted(set(range(5)) - set([action]))
+            action = np.random.choice(candidate_actions)
+            if action < 4:
+                action_dir = self.action_pos_dict[action]
+            else:
+                action_dir = np.zeros(2)
+        else:
+            action_dir = self.action_pos_dict[action]
+        next_agent_pos = self.candidates_pos[self.agent_id] + action_dir
         if self.is_empty(next_agent_pos, agent=True):
             new_candidates_pos[self.agent_id] = next_agent_pos
             if np.all(next_agent_pos == self.goal_pos):
@@ -180,7 +197,16 @@ class GridworldEnv(gym.Env):
 
         # update agent pos first
         current_agent_pos = self.candidates_pos[self.agent_id]
-        next_agent_pos = current_agent_pos + self.action_pos_dict[action]
+        if np.random.rand() < self.noise:
+            candidate_actions = sorted(set(range(5)) - set([action]))
+            action = np.random.choice(candidate_actions)
+            if action < 4:
+                action_dir = self.action_pos_dict[action]
+            else:
+                action_dir = np.zeros(2)
+        else:
+            action_dir = self.action_pos_dict[action]
+        next_agent_pos = current_agent_pos + action_dir
         if self.is_empty(next_agent_pos, agent=True):
             new_candidates_pos[self.agent_id] = next_agent_pos
             if np.all(next_agent_pos == self.goal_pos):
@@ -213,6 +239,7 @@ class GridworldEnv(gym.Env):
     def step_change_agent(self, action):
 
         if self.step_counter % self.change_agent_every == 0:
+            print('AGENT CHANGES OMGGG')
             self.agent_id = np.random.choice([i for i in range(len(self.candidates_pos)) if i != self.agent_id])
 
         action = int(action)
@@ -222,7 +249,16 @@ class GridworldEnv(gym.Env):
 
         # update agent pos first
         current_agent_pos = self.candidates_pos[self.agent_id]
-        next_agent_pos = current_agent_pos + self.action_pos_dict[action]
+        if np.random.rand() < self.noise:
+            candidate_actions = sorted(set(range(5)) - set([action]))
+            action = np.random.choice(candidate_actions)
+            if action < 4:
+                action_dir = self.action_pos_dict[action]
+            else:
+                action_dir = np.zeros(2)
+        else:
+            action_dir = self.action_pos_dict[action]
+        next_agent_pos = current_agent_pos +  action_dir
         if self.is_empty(next_agent_pos, agent=True):
             new_candidates_pos[self.agent_id] = next_agent_pos
             if np.all(next_agent_pos == self.goal_pos):

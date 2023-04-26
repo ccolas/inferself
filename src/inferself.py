@@ -4,6 +4,8 @@ import scipy
 from copy import deepcopy
 import gym
 import gym_gridworld
+from scipy.stats import beta
+import matplotlib.pyplot as plt
 
 class InferSelf:
     def __init__(self, env, args):
@@ -43,20 +45,38 @@ class InferSelf:
                                 dir0l, dir1l, dir2l, dir3l = [s2l(dir) for dir in [dir0, dir1, dir2, dir3]]  # convert string forms into list forms
                                 new_theory = dict(agent_id=agent_id,
                                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
-                                                  input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3})
+                                                  input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
+                                                  beta_params=self.args['beta_prior'])
                                 self.theories.append(new_theory)
             else:
                 dir0, dir1, dir2, dir3 = dirs
                 dir0l, dir1l, dir2l, dir3l = [s2l(dir) for dir in [dir0, dir1, dir2, dir3]]  # convert string forms into list forms
                 new_theory = dict(agent_id=agent_id,
                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
-                                  input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3})
+                                  input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
+                                  beta_params=self.args['beta_prior'])
                 self.theories.append(new_theory)
+        # self.get_beta_plot(0)
         self.theories = np.array(self.theories)
         self.probas = np.ones(self.n_theories) / self.n_theories  # uniform probability distribution over theories
         if self.args['biased_input_mapping']:
             self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 1000
             self.probas /= self.probas.sum()
+
+    def get_beta_plot(self, i_theory):
+        fig, ax = plt.subplots(1, 1)
+        a, b = self.theories[i_theory]['beta_params']
+        x = np.linspace(0.01, 0.99, 100)
+        ax.plot(x, beta.pdf(x, a, b), 'r-', lw=5, alpha=0.6, label='beta pdf')
+        plt.show(block=False)
+
+    def get_beta_mean(self, theory, std=False):
+        beta_params = theory['beta_params']
+        if std:
+            param = 'mv'
+        else:
+            param = 'm'
+        return beta.stats(beta_params[0], beta_params[1], moments=param)
 
     def reset_memory(self):
         self.actions = []  # memory of past actions
@@ -68,10 +88,12 @@ class InferSelf:
         for o_id in range(self.n_objs):
             self.obj_pos[o_id].append(new_obs['objects'][o_id])
 
-        posteriors = self.compute_posteriors(prev_obs, new_obs, self.probas, action)
+        posteriors, new_betas = self.compute_posteriors(prev_obs, new_obs, self.probas, action, compute_new_betas=True)
         to_keep = np.where(posteriors > 0)
 
         self.probas = posteriors
+        for theory, new_b in zip(self.theories, new_betas):
+            theory['beta_params'] = new_b
 
         # delete theories with proba = 0
         if len(to_keep) == 0:  # something weird happened (eg avatar switch)
@@ -105,9 +127,32 @@ class InferSelf:
             print("agent id: ", theories[id]['agent_id'], ", prob: ", probs[id])
             probs[id] = 0
 
+    def is_agent_mvt_consistent(self, theory, prev_obs, new_obs, action):
+        agent_id = theory['agent_id']
+        action_dir = theory['input_mapping'][action]
+        current_map = prev_obs['map'].copy()
+        prev_obj_pos = prev_obs['objects']
+        new_obj_pos = new_obs['objects']
 
-    def compute_posteriors(self, prev_obs, new_obs, probas, action):
-        # run inference for the new datapoint
+        # compute likelihood of agent movement
+        prev_pos = prev_obj_pos[agent_id]
+        new_pos = new_obj_pos[agent_id]
+        predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
+        return np.all(predicted_pos == new_pos)
+
+
+    def compute_posteriors(self, prev_obs, new_obs, probas, action, compute_new_betas=False):
+        # posterior of identity x noise is posterior of identity x posterior(noise | identity)
+
+        # update parameters of the beta distribution for the current theory by incrementing alpha is observation is not consistent
+        new_betas = []
+        if compute_new_betas:
+            for i_theory, theory in enumerate(self.theories):
+                new_b = theory['beta_params'].copy()
+                new_b[int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))] += 1
+                new_betas.append(new_b)
+
+        # update the posterior for the agent's identity
         posteriors = np.zeros(self.n_theories)
         for i_theory, theory in enumerate(self.theories):
             likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
@@ -115,7 +160,7 @@ class InferSelf:
             posteriors[i_theory] = posterior
         if posteriors.sum() > 0:
             posteriors = posteriors / posteriors.sum()
-        return posteriors
+        return posteriors, new_betas
 
     def compute_likelihood(self, theory, prev_obs, new_obs, action):
         # probability of data (object positions) given theory and action
@@ -131,10 +176,10 @@ class InferSelf:
         prev_pos = prev_obj_pos[agent_id]
         new_pos = new_obj_pos[agent_id]
         predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
-        if not np.all(predicted_pos == new_pos):
-            return 0  # if theory cannot predict agent behavior, then likelihood is 0
+        if np.all(predicted_pos == new_pos):
+            proba_movements.append(1 - self.get_beta_mean(theory))
         else:
-            proba_movements.append(1)
+            proba_movements.append(self.get_beta_mean(theory))
         # move the agent in the map
         current_map[prev_pos[0], prev_pos[1]] = 0
         current_map[new_pos[0], new_pos[1]] = 4
@@ -186,10 +231,13 @@ class InferSelf:
         if mode == 1:
             good_actions = set(good_actions_exploit).intersection(set(good_actions_explore))
             if len(good_actions) > 0:
+                print('explore and exploit')
                 action = np.random.choice(sorted(good_actions))
             else:
+                print('explore')
                 action = action_explore
         elif mode == 2:
+            print('exploit')
             action = action_exploit
 
         else: raise ValueError
@@ -208,7 +256,7 @@ class InferSelf:
             exp_info_gain = 0
             for obs_str, obs_prob in weighted_obs.items():
                 poss_obs = s2dict(obs_str)
-                new_probas = self.compute_posteriors(prev_obs, poss_obs, self.probas, action)
+                new_probas, _ = self.compute_posteriors(prev_obs, poss_obs, self.probas, action)
                 info_gain = self.information_gain(self.probas, new_probas)
                 exp_info_gain += info_gain * obs_prob
             action_scores.append(exp_info_gain)
@@ -308,7 +356,7 @@ class InferSelf:
                         obj_poss_movements = []
                         for i_dir, dir_prob in enumerate(self.obj_direction_prior[obj_id]):
                             if dir_prob > 0:
-                                dir =(self.directions + [0,0])[i_dir]
+                                dir = (self.directions + [0,0])[i_dir]
                                 obj_poss_movements.append((dir, dir_prob))
                     poss_movements.append(obj_poss_movements)
                 poss_movement_combinations = itertools.product(*poss_movements)
@@ -328,7 +376,17 @@ class InferSelf:
             for theory_id in theory_ids:
                 theory = theories[theory_id]
                 agent_id = theory['agent_id']
-                action_dir = theory['input_mapping'][action]
+                noise = np.random.beta(*theory['beta_params'])
+
+                if np.random.rand() < noise:
+                    candidate_actions = sorted(set(range(5)) - set([action]))
+                    effective_action = np.random.choice(candidate_actions)
+                    if effective_action < 4:
+                        action_dir = theory['input_mapping'][effective_action]
+                    else:
+                        action_dir = np.zeros(2)
+                else:
+                    action_dir = theory['input_mapping'][action]
                 intended_movements = []
                 for obj_id, obj_pos in enumerate(prev_obs['objects']):
                     if obj_id == agent_id:
