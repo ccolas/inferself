@@ -239,8 +239,8 @@ class GridworldEnv(gym.Env):
     def step_change_agent(self, action):
 
         if self.step_counter % self.change_agent_every == 0:
-            print('AGENT CHANGES OMGGG')
             self.agent_id = np.random.choice([i for i in range(len(self.candidates_pos)) if i != self.agent_id])
+            print(f'AGENT CHANGES OMGGG: {self.agent_id}')
 
         action = int(action)
         info = dict(success=False)

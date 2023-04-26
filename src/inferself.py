@@ -7,6 +7,8 @@ import gym_gridworld
 from scipy.stats import beta
 import matplotlib.pyplot as plt
 
+COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
+          '#7f7f7f', '#bcbd22', '#17becf']
 class InferSelf:
     def __init__(self, env, args):
         self.args = args
@@ -22,10 +24,13 @@ class InferSelf:
             self.obj_direction_prior = np.full((self.n_objs, len(self.directions)+1), 1/(len(self.directions)+1))
         else:
             raise NotImplementedError
+        self.history_agent_probas = [[1/self.n_objs for _ in range(self.n_objs)]]
         self.reset_memory()
         self.reset_theories()
+        self.fig = None
 
     def reset_theories(self):
+        self.time_since_last_reset = 0
         self.theory_found = False
         self.theories = []
         dirs = self.directions_str.copy()
@@ -61,6 +66,13 @@ class InferSelf:
         if self.args['biased_input_mapping']:
             self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 1000
             self.probas /= self.probas.sum()
+
+    def update_history_agent_probas(self):
+        probas = [0 for _ in range(self.n_objs)]
+        for theory, proba in zip(self.theories, self.probas):
+            probas[theory['agent_id']] += proba
+        assert (np.sum(probas) - 1) < 1e-5
+        self.history_agent_probas.append(probas)
 
     def get_beta_plot(self, i_theory):
         fig, ax = plt.subplots(1, 1)
@@ -99,16 +111,24 @@ class InferSelf:
             print('Past evidence is not consistent, let\'s reset the theories')
             self.reset_theories()
         else:
-            if len(to_keep) == len(self.probas):
-                if not self.theory_found: print(f'  new datapoint ingested, we didn\'t learn anything here')
-            else:
+            if not len(to_keep) == len(self.probas):
                 self.theories = self.theories[to_keep]
                 self.probas = self.probas[to_keep]
-                if not self.theory_found:  print(f'  new datapoint ingested, we now have {self.n_theories} theories')
             self.probas = self.probas / self.probas.sum()  # renormalize the probabilities
 
-        self.print_top(self.theories, self.probas)
+        self.update_history_agent_probas()  # keep track of probabilities for each agent
+        best_theory_id = np.argmax(self.probas)
+        best_agent_id = self.theories[best_theory_id]['agent_id']
+        data = self.get_smooth_agent_probas()
+        if data.shape[0] > 10 and self.time_since_last_reset > 3:
+            if data[:, best_agent_id][-1] < min(data[:, best_agent_id][-3], data[:, best_agent_id][-2]):  # if drop in belief about agent identity in smooth tracking
+                print('Drop in the best theory smooth posterior, let\'s reset our theories')
+                self.history_agent_probas.pop(-1)
+                self.reset_theories()
+                return self.update_theory(prev_obs, new_obs, action)
 
+        self.print_top(self.theories, self.probas)
+        self.time_since_last_reset += 1
         if self.n_theories == 1:
             if not self.theory_found: print(f'We found the agent with probability 1: it\'s object {self.theories[0]["agent_id"]}, its action mapping is: {self.theories[0]["input_mapping"]}')
             self.theory_found = True
@@ -436,6 +456,38 @@ class InferSelf:
     @property
     def n_theories(self):
         return len(self.theories)
+
+    def get_smooth_agent_probas(self, smooth=5):
+        data = np.atleast_2d(np.array(self.history_agent_probas.copy()))
+        if smooth is not None:
+            smooth_data = np.zeros(data.shape)
+            for i in range(data.shape[0]):
+                smooth_data[i, :] = np.mean(data[max(0, i - smooth): i+1, :], axis=0)
+            data = smooth_data
+        return data
+
+    def render(self, true_agent=None, smooth=5):
+        data = np.atleast_2d(np.array(self.history_agent_probas.copy()))
+        smooth_data = self.get_smooth_agent_probas(smooth=smooth)
+        if self.fig is None:
+            self.fig, self.ax = plt.subplots()
+            for i, d in zip(range(data.shape[1]), data.T):
+                self.ax.plot(d, c=COLORS[i],  label=f'{i}')
+            for i, d in zip(range(data.shape[1]), smooth_data.T):
+                self.ax.plot(d, linestyle='--', c=COLORS[i], label=f'{i} smoothed')
+            if true_agent is not None:
+                self.ax.scatter(data.shape[0] - 1, 1, c=COLORS[true_agent])
+            plt.legend()
+            plt.ylim([0, 1.05])
+            plt.show(block=False)
+        if true_agent is not None:
+            self.ax.scatter(data.shape[0] - 1, 1, c=COLORS[true_agent])
+        for i, d in zip(range(data.shape[1]), data.T):
+            self.ax.plot(d, c=COLORS[i])
+        for i, d in zip(range(data.shape[1]), smooth_data.T):
+            self.ax.plot(d, linestyle='--', c=COLORS[i])
+        self.fig.canvas.draw()
+        stop = 1
 
 def dict2s(d):
     d2 = {}

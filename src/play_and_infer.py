@@ -54,6 +54,7 @@ def play_and_infer(env=ENV):
             obs, rew, done, info = env.step(action)
             env.render(None)
             theory, proba = inferself.update_theory(prev_info['semantic_state'], info['semantic_state'], action)
+            inferself.render(true_agent=env.unwrapped.agent_id)
             print(f' guess: agent id={theory["agent_id"]}, proba={proba}, estimated noise: {inferself.get_beta_mean(theory, std=True)}, beta = {theory["beta_params"]}')
             prev_obs = obs.copy()
             prev_info = deepcopy(info)
