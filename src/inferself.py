@@ -56,7 +56,6 @@ class InferSelf:
                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
                                   beta_params=self.args['beta_prior'])
                 self.theories.append(new_theory)
-        # self.get_beta_plot(0)
         self.theories = np.array(self.theories)
         self.probas = np.ones(self.n_theories) / self.n_theories  # uniform probability distribution over theories
         if self.args['biased_input_mapping']:
