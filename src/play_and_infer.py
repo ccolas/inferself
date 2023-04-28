@@ -3,7 +3,7 @@ from copy import deepcopy
 import pygame
 import gym
 import gym_gridworld
-from inferself import InferSelf
+from forgetful_inferself import InferSelfForgetful
 
 ENV = 'changeAgent-shuffle-noisy-v0'
 ARGS = dict(n_objs=4,
@@ -13,7 +13,9 @@ ARGS = dict(n_objs=4,
             n_simulations=50,  # number of simulations if sampling
             infer_mapping=True,
             threshold=0.9, # confidence threshold for agent id
-            beta_prior=[1, 15]
+            beta_prior=[1, 15],
+            forget_param=None, #the smaller this is, the more forgetful we are when computing noise
+            likelihood_weight=10
             )
 
 def play_and_infer(env=ENV):
@@ -24,7 +26,7 @@ def play_and_infer(env=ENV):
     env.render(None)
     args = ARGS
     args.update(n_objs=env.n_candidates)
-    inferself = InferSelf(env=env,
+    inferself = InferSelfForgetful(env=env,
                           args=args)
 
     running = True
