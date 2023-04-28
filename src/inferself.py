@@ -1,5 +1,6 @@
 import numpy as np
 import itertools
+import math
 import scipy
 from copy import deepcopy
 import gym
@@ -9,7 +10,7 @@ import matplotlib.pyplot as plt
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
-class InferSelf:
+class InferSelfForgetful:
     def __init__(self, env, args):
         self.args = args
         self.n_objs = args['n_objs']
@@ -27,6 +28,7 @@ class InferSelf:
         self.history_agent_probas = [[1/self.n_objs for _ in range(self.n_objs)]]
         self.reset_memory()
         self.reset_theories()
+        self.consistency_record = [[]]*self.n_theories
         self.fig = None
 
     def reset_theories(self):
@@ -67,12 +69,11 @@ class InferSelf:
             self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 1000
             self.probas /= self.probas.sum()
 
-    def update_history_agent_probas(self):
-        probas = [0 for _ in range(self.n_objs)]
-        for theory, proba in zip(self.theories, self.probas):
-            probas[theory['agent_id']] += proba
-        assert (np.sum(probas) - 1) < 1e-5
-        self.history_agent_probas.append(probas)
+
+    def reset_memory(self):
+        self.actions = []  # memory of past actions
+        self.obj_pos = dict(zip(range(self.n_objs), [[] for _ in range(self.n_objs)]))  # memory of past movements for each object
+
 
     def get_beta_plot(self, i_theory):
         fig, ax = plt.subplots(1, 1)
@@ -89,46 +90,33 @@ class InferSelf:
             param = 'm'
         return beta.stats(beta_params[0], beta_params[1], moments=param)
 
-    def reset_memory(self):
-        self.actions = []  # memory of past actions
-        self.obj_pos = dict(zip(range(self.n_objs), [[] for _ in range(self.n_objs)]))  # memory of past movements for each object
-
     def update_theory(self, prev_obs, new_obs, action):
         # store new info
         self.actions.append(action)
         for o_id in range(self.n_objs):
             self.obj_pos[o_id].append(new_obs['objects'][o_id])
 
-        posteriors, new_betas = self.compute_posteriors(prev_obs, new_obs, self.probas, action, compute_new_betas=True)
-        to_keep = np.where(posteriors > 0)
+        posteriors, (new_betas, new_consistency_record) = self.compute_posteriors(prev_obs, new_obs, self.probas, action, compute_new_betas=True)
 
         self.probas = posteriors
         for theory, new_b in zip(self.theories, new_betas):
             theory['beta_params'] = new_b
+        self.consistency_record = new_consistency_record
 
-        # delete theories with proba = 0
-        if len(to_keep) == 0:  # something weird happened (eg avatar switch)
-            print('Past evidence is not consistent, let\'s reset the theories')
-            self.reset_theories()
-        else:
-            if not len(to_keep) == len(self.probas):
-                self.theories = self.theories[to_keep]
-                self.probas = self.probas[to_keep]
-            self.probas = self.probas / self.probas.sum()  # renormalize the probabilities
 
         self.update_history_agent_probas()  # keep track of probabilities for each agent
         best_theory_id = np.argmax(self.probas)
         best_agent_id = self.theories[best_theory_id]['agent_id']
         data = self.get_smooth_agent_probas()
-        if data.shape[0] > 10 and self.time_since_last_reset > 3:
-            if data[:, best_agent_id][-1] < min(data[:, best_agent_id][-3], data[:, best_agent_id][-2]):  # if drop in belief about agent identity in smooth tracking
-                print('Drop in the best theory smooth posterior, let\'s reset our theories')
-                self.history_agent_probas.pop(-1)
-                self.reset_theories()
-                return self.update_theory(prev_obs, new_obs, action)
-
-        self.print_top(self.theories, self.probas)
+        if self.args['explicit_resetting']:
+            if data.shape[0] > 10 and self.time_since_last_reset > 3:
+                if data[:, best_agent_id][-1] < min(data[:, best_agent_id][-3], data[:, best_agent_id][-2]):  # if drop in belief about agent identity in smooth tracking
+                    print('Drop in the best theory smooth posterior, let\'s reset our theories')
+                    self.history_agent_probas.pop(-1)
+                    self.reset_theories()
+                    return self.update_theory(prev_obs, new_obs, action)
         self.time_since_last_reset += 1
+        self.print_top(self.theories, self.probas)
         if self.n_theories == 1:
             if not self.theory_found: print(f'We found the agent with probability 1: it\'s object {self.theories[0]["agent_id"]}, its action mapping is: {self.theories[0]["input_mapping"]}')
             self.theory_found = True
@@ -136,6 +124,13 @@ class InferSelf:
         else:
             theory_id = np.argmax(self.probas)
             return self.theories[theory_id], self.probas[theory_id]
+
+    def update_history_agent_probas(self):
+        probas = [0 for _ in range(self.n_objs)]
+        for theory, proba in zip(self.theories, self.probas):
+            probas[theory['agent_id']] += proba
+        assert (np.sum(probas) - 1) < 1e-5
+        self.history_agent_probas.append(probas)
 
 
     def print_top(self, theories, probs):
@@ -162,24 +157,36 @@ class InferSelf:
 
     def compute_posteriors(self, prev_obs, new_obs, probas, action, compute_new_betas=False):
         # posterior of identity x noise is posterior of identity x posterior(noise | identity)
-
         # update parameters of the beta distribution for the current theory by incrementing alpha is observation is not consistent
         new_betas = []
+        new_consistency_record = []
         if compute_new_betas:
+            if self.args['forget_param']==None:
+                decays = [1]*len(self.consistency_record[0])
+            else:
+                decays = [math.e**(-k/self.args['forget_param']) for k in range(len(self.consistency_record[0])+1, 1, -1)]
             for i_theory, theory in enumerate(self.theories):
-                new_b = theory['beta_params'].copy()
-                new_b[int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))] += 1
+                #now we are tracking consistent and inconsistent obs for each theory
+                obs_consistent =  self.consistency_record[i_theory] + [int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))]
+                new_b = self.args['beta_prior'].copy()
+                #prior obs, prev obs has weight e^-1/forget_param
+                for i, consistent in enumerate(obs_consistent[:-1]):
+                    new_b[consistent] += decays[i]
+                #current obs
+                new_b[obs_consistent[-1]] += 1
+
+                new_consistency_record.append(obs_consistent)
                 new_betas.append(new_b)
 
         # update the posterior for the agent's identity
         posteriors = np.zeros(self.n_theories)
         for i_theory, theory in enumerate(self.theories):
             likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
-            posterior = probas[i_theory] * likelihood
+            posterior = probas[i_theory] * (likelihood ** self.args['likelihood_weight'])
             posteriors[i_theory] = posterior
         if posteriors.sum() > 0:
             posteriors = posteriors / posteriors.sum()
-        return posteriors, new_betas
+        return posteriors, (new_betas, new_consistency_record)
 
     def compute_likelihood(self, theory, prev_obs, new_obs, action):
         # probability of data (object positions) given theory and action
@@ -514,4 +521,4 @@ def s2l(s):
     return [int(ss) for ss in s.split('_')]
 
 if __name__ == '__main__':
-    inferself = InferSelf()
+    inferself = InferSelfForgetful()
