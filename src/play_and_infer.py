@@ -16,7 +16,8 @@ ARGS = dict(n_objs=4,
             beta_prior=[1, 15],
             forget_param=None, #the smaller this is, the more forgetful we are when computing noise
             likelihood_weight=1,
-            explicit_resetting=False
+            explicit_resetting=True,
+            print_status=False
             )
 
 def play_and_infer(env=ENV):
@@ -27,7 +28,7 @@ def play_and_infer(env=ENV):
     env.render(None)
     args = ARGS
     args.update(n_objs=env.n_candidates)
-    inferself = InferSelfForgetful(env=env,
+    inferself = InferSelf(env=env,
                           args=args)
 
     running = True

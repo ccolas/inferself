@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
-class InferSelfForgetful:
+class InferSelf:
     def __init__(self, env, args):
         self.args = args
         self.n_objs = args['n_objs']
@@ -111,14 +111,17 @@ class InferSelfForgetful:
         if self.args['explicit_resetting']:
             if data.shape[0] > 10 and self.time_since_last_reset > 3:
                 if data[:, best_agent_id][-1] < min(data[:, best_agent_id][-3], data[:, best_agent_id][-2]):  # if drop in belief about agent identity in smooth tracking
-                    print('Drop in the best theory smooth posterior, let\'s reset our theories')
+                    if self.args['print_status']:
+                        print('Drop in the best theory smooth posterior, let\'s reset our theories')
                     self.history_agent_probas.pop(-1)
                     self.reset_theories()
                     return self.update_theory(prev_obs, new_obs, action)
         self.time_since_last_reset += 1
-        self.print_top(self.theories, self.probas)
+        if self.args['print_status']:
+            self.print_top(self.theories, self.probas)
         if self.n_theories == 1:
-            if not self.theory_found: print(f'We found the agent with probability 1: it\'s object {self.theories[0]["agent_id"]}, its action mapping is: {self.theories[0]["input_mapping"]}')
+            if self.args['print_status']:
+                if not self.theory_found: print(f'We found the agent with probability 1: it\'s object {self.theories[0]["agent_id"]}, its action mapping is: {self.theories[0]["input_mapping"]}')
             self.theory_found = True
             return self.theories[0], 1
         else:
@@ -257,13 +260,16 @@ class InferSelfForgetful:
         if mode == 1:
             good_actions = set(good_actions_exploit).intersection(set(good_actions_explore))
             if len(good_actions) > 0:
-                print('explore and exploit')
+                if self.args['print_status']:
+                    print('explore and exploit')
                 action = np.random.choice(sorted(good_actions))
             else:
-                print('explore')
+                if self.args['print_status']:
+                    print('explore')
                 action = action_explore
         elif mode == 2:
-            print('exploit')
+            if self.args['print_status']:
+                print('exploit')
             action = action_exploit
 
         else: raise ValueError
@@ -521,4 +527,4 @@ def s2l(s):
     return [int(ss) for ss in s.split('_')]
 
 if __name__ == '__main__':
-    inferself = InferSelfForgetful()
+    inferself = InferSelf()
