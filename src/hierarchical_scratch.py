@@ -32,7 +32,6 @@ def ForwardBackward_BernoulliJump(s, pJ, pgrid, Alpha0, Pass='Forward'):
     # 	    => the Backward estimation
     # JumpPost: Posterior on jump probability given s[1:N].
     #
-
     # Checks and initialization
     # =========================
     seqL   = len(s)
@@ -61,8 +60,11 @@ def ForwardBackward_BernoulliJump(s, pJ, pgrid, Alpha0, Pass='Forward'):
     # Trans(i,j) is the probability to jump FROM i TO J
     # Hence, sum(Trans(i,:)) = 1
     # The likelihood of new values after a jump correspond the prior on states.
+    
+    #is this wrong??? divide by 0
     Trans = (1 / (NonDiag * Alpha0)) * Alpha0.T
     Trans = Trans * NonDiag
+    np.fill_diagonal(Trans, 0)
 
     # Compute alpha iteratively (forward pass)
     for k in range(seqL):
@@ -70,19 +72,21 @@ def ForwardBackward_BernoulliJump(s, pJ, pgrid, Alpha0, Pass='Forward'):
         # Specify likelihood of current observation
         LL = np.eye(n)
         if s[k] == 1:
-            LL[LL == 1] = pgrid
+            LL = LL * pgrid
         elif s[k] == 2:
-            LL[LL == 1] = 1 - pgrid
+            #LL[LL == 1] = 1 - pgrid
+            LL = LL * (1 - pgrid)
         elif np.isnan(s[k]):
             # likelihood is flat in the absence of observation ('NaN')
-            LL[LL == 1] = 1 / n
+            #LL[LL == 1] = 1 / n
+            LL = LL * (1/n)
 
         # Compute the new alpha, based on the former alpha, the prior on
         # transition between states and the likelihood. See for instance
         # Wikipedia entry for 'Forward algorithm'.
         if k == 0:
-            Alpha[:, 0, k] = (1 - pJ) * LL @ Alpha0
-            Alpha[:, 1, k] = pJ / (n - 1) * LL @ Alpha0
+            Alpha[:, 0, k] = ((1 - pJ) * LL @ Alpha0).squeeze()
+            Alpha[:, 1, k] = (pJ / (n - 1) * LL @ Alpha0).squeeze()
         else:
 
             # No Jump at k:
@@ -90,8 +94,8 @@ def ForwardBackward_BernoulliJump(s, pJ, pgrid, Alpha0, Pass='Forward'):
             # - take the current observation likelihood under x_i (LL)
             # - take the posterior on x_i(t-1) (summed over whether there was a
             # jump of not at t-1)
-            Alpha[:, 0, k] = (1 - pJ) * LL @ (Alpha[:, 0, k - 1] + Alpha[:, 1, k - 1])
-
+            Alpha[:, 0, k] = ((1 - pJ) * LL @ (Alpha[:, 0, k - 1] + Alpha[:, 1, k - 1])).squeeze()
+            #print(((1 - pJ) * LL @ (Alpha[:, 0, k - 1] + Alpha[:, 1, k - 1])).squeeze())
             # Jump at k:
             # - take the prior on 'jump': (1-pJ)
             # - take the current observation likelihood under x_i (LL)
@@ -99,13 +103,17 @@ def ForwardBackward_BernoulliJump(s, pJ, pgrid, Alpha0, Pass='Forward'):
             # (summed over whether there was a jump or not at i-1)
             # - sum over the likelihood of the ORIGINS of such state
             # (hence the transpose on Trans, to sum over the ORIGIN)
-            Alpha[:, 1, k] = pJ * LL @ (Trans.T @ (Alpha[:, 0, k - 1] + Alpha[:, 1, k - 1]))
+            #print(Trans)
+            Alpha[:, 1, k] = (pJ * LL @ (Trans.T @ (Alpha[:, 0, k - 1] + Alpha[:, 1, k - 1]))).squeeze()
+            #these are all nans
+            #print((pJ * LL @ (Trans.T @ (Alpha[:, 0, k - 1] + Alpha[:, 1, k - 1]))).squeeze())
 
         # scale alpha as a posterior (which we will do eventually) to avoid
         # numeric overflow
         NormalizationCst = np.sum(np.sum(Alpha[:, :, k], axis=1), axis=0)
         Alpha[:, 0, k] = Alpha[:, 0, k] / NormalizationCst
         Alpha[:, 1, k] = Alpha[:, 1, k] / NormalizationCst
+  
 
     # BACKWARD PASS: p(y(t+1:N | x(i,t))
     # ================================
@@ -168,17 +176,18 @@ def ForwardBackward_BernoulliJump(s, pJ, pgrid, Alpha0, Pass='Forward'):
     # COMBINE FORWARD AND BACKWARD PASS
     # =================================
     if Pass.lower() == 'backward':
+        # Compute the forward & backward posterior
+        rAlpha = np.sum(Alpha, axis=1)
+        rBeta = np.sum(Beta, axis=1)
+
         # p(x(t)|y(1:N)) ~ p(y(t+1:N)|x(t)) p(x(t)|y(1:t))
         # NB: the sum over the second dimension is to average out the J=0 or 1
-        rGamma = np.sum(Alpha, axis=2) * np.sum(Beta, axis=2)
+        rGamma = rAlpha * rBeta
 
         # Scale gamma as a posterior on observations
-        cst = np.tile(np.sum(rGamma, axis=1), (n, 1))
+        cst = np.tile(np.sum(rGamma, axis=0), (n, 1))
         rGamma = rGamma / cst
 
-        # Compute the forward & backward posterior
-        rAlpha = np.sum(Alpha, axis=2)
-        rBeta = np.sum(Beta, axis=2)
 
         # Compute the posterior on jump, summed over the states
         # GammaJ = p(x(t),J=1|y(1:N)) ~ p(y(t+1:N) | x(t),J=1) p(x(t),J=1|y(1:t))
@@ -188,9 +197,13 @@ def ForwardBackward_BernoulliJump(s, pJ, pgrid, Alpha0, Pass='Forward'):
         GammaJ = GammaJ / cst
         JumpPost = np.sum(GammaJ, axis=0)
     else:
-        rGamma = np.array([]);
-        rBeta = np.array([]);
+        rGamma = np.array([])
+        rBeta = np.array([])
         JumpPost = np.array([])
-        rAlpha = np.sum(Alpha, axis=2)
+        rAlpha = np.sum(Alpha, axis=1)
 
-    return rGamma, rAlpha, rBeta, JumpPost, Trans
+    #if we want to condition on jump or no jump at prev tpt, 
+    #alpha [:, 1, :] if jump and [:, 0, :] is no jump
+    #where [:, 1, k] integrates over both options at tpt k-1
+    #beta is just 1 for the last k, so multiplying by beta won't do anything
+    return Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans

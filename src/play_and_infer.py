@@ -4,20 +4,29 @@ import pygame
 import gym
 import gym_gridworld
 from inferself import InferSelf
+import numpy as np
+
+#TODO:
+#infer distrib over p_change?
+
 
 ENV = 'changeAgent-shuffle-noisy-v0'
 ARGS = dict(n_objs=4,
             biased_input_mapping=False,
             bias_bot_mvt='uniform', # static or uniform
             simulation='sampling',  # exhaustive or sampling
-            n_simulations=50,  # number of simulations if sampling
+            n_simulations=1,  # number of simulations if sampling
             infer_mapping=True,
             threshold=0.9, # confidence threshold for agent id
-            beta_prior=[1, 15],
+            noise_prior_beta=[1, 15],
+            noise_prior_discrete=np.array([0.15,0.2,0.15,0.15,0.1,0.1] + ([.01]*15)), #np.full(21, 1/21),
+            noise_values_discrete= np.arange(21)/20,
             forget_param=None, #the smaller this is, the more forgetful we are when computing noise
             likelihood_weight=1,
-            explicit_resetting=True,
-            print_status=False
+            explicit_resetting=False,
+            print_status=False,
+            hierarchical=True,
+            p_change=0.1
             )
 
 def play_and_infer(env=ENV):
@@ -59,7 +68,7 @@ def play_and_infer(env=ENV):
             env.render(None)
             theory, proba = inferself.update_theory(prev_info['semantic_state'], info['semantic_state'], action)
             inferself.render(true_agent=env.unwrapped.agent_id)
-            print(f' guess: agent id={theory["agent_id"]}, proba={proba}, estimated noise: {inferself.get_beta_mean(theory, std=True)}, beta = {theory["beta_params"]}')
+            print(f' guess: agent id={theory["agent_id"]}, proba={proba}, estimated noise: {inferself.get_noise_mean(theory, std=True)}'), #beta = {theory["beta_params"]}')
             prev_obs = obs.copy()
             prev_info = deepcopy(info)
             if done:

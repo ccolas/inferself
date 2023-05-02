@@ -7,6 +7,7 @@ import gym
 import gym_gridworld
 from scipy.stats import beta
 import matplotlib.pyplot as plt
+from hierarchical_scratch import ForwardBackward_BernoulliJump
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
@@ -28,8 +29,10 @@ class InferSelf:
         self.history_agent_probas = [[1/self.n_objs for _ in range(self.n_objs)]]
         self.reset_memory()
         self.reset_theories()
+        self.prior_probas = self.probas
         self.consistency_record = [[]]*self.n_theories
         self.fig = None
+        self.p_change = args['p_change']
 
     def reset_theories(self):
         self.time_since_last_reset = 0
@@ -53,7 +56,8 @@ class InferSelf:
                                 new_theory = dict(agent_id=agent_id,
                                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
-                                                  beta_params=self.args['beta_prior'])
+                                                  noise_params_beta=self.args['noise_prior_beta'],
+                                                  noise_params_discrete=self.args['noise_prior_discrete'])
                                 self.theories.append(new_theory)
             else:
                 dir0, dir1, dir2, dir3 = dirs
@@ -61,7 +65,8 @@ class InferSelf:
                 new_theory = dict(agent_id=agent_id,
                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
-                                  beta_params=self.args['beta_prior'])
+                                  noise_params_beta=self.args['noise_prior_beta'],
+                                  noise_params_discrete=self.args['noise_prior_discrete'])
                 self.theories.append(new_theory)
         self.theories = np.array(self.theories)
         self.probas = np.ones(self.n_theories) / self.n_theories  # uniform probability distribution over theories
@@ -77,18 +82,21 @@ class InferSelf:
 
     def get_beta_plot(self, i_theory):
         fig, ax = plt.subplots(1, 1)
-        a, b = self.theories[i_theory]['beta_params']
+        a, b = self.theories[i_theory]['noise_params_beta']
         x = np.linspace(0.01, 0.99, 100)
         ax.plot(x, beta.pdf(x, a, b), 'r-', lw=5, alpha=0.6, label='beta pdf')
         plt.show(block=False)
 
-    def get_beta_mean(self, theory, std=False):
-        beta_params = theory['beta_params']
-        if std:
-            param = 'mv'
+    def get_noise_mean(self, theory, std=False):
+        if self.args['hierarchical']:
+            return np.sum(self.args['noise_values_discrete'] * theory['noise_params_discrete'])
         else:
-            param = 'm'
-        return beta.stats(beta_params[0], beta_params[1], moments=param)
+            noise_params_beta = theory['noise_params_beta']
+            if std:
+                param = 'mv'
+            else:
+                param = 'm'
+            return beta.stats(noise_params_beta[0], noise_params_beta[1], moments=param)
 
     def update_theory(self, prev_obs, new_obs, action):
         # store new info
@@ -96,13 +104,15 @@ class InferSelf:
         for o_id in range(self.n_objs):
             self.obj_pos[o_id].append(new_obs['objects'][o_id])
 
-        posteriors, (new_betas, new_consistency_record) = self.compute_posteriors(prev_obs, new_obs, self.probas, action, compute_new_betas=True)
+        posteriors, (new_noise_params, new_consistency_record) = self.compute_posteriors(prev_obs, new_obs, self.probas, action, compute_new_noise=True)
 
         self.probas = posteriors
-        for theory, new_b in zip(self.theories, new_betas):
-            theory['beta_params'] = new_b
+        for theory, new_n in zip(self.theories, new_noise_params):
+            if self.args['hierarchical']:
+               theory['noise_params_discrete'] = new_n
+            else:
+                theory['noise_params_beta'] = new_n
         self.consistency_record = new_consistency_record
-
 
         self.update_history_agent_probas()  # keep track of probabilities for each agent
         best_theory_id = np.argmax(self.probas)
@@ -135,6 +145,15 @@ class InferSelf:
         assert (np.sum(probas) - 1) < 1e-5
         self.history_agent_probas.append(probas)
 
+    def get_mapping_probas(self):
+        mapping_probs = np.zeros((len(self.directions), len(self.directions)))
+        #for each action, what's the prob of each direction
+        for action_idx in range(4):
+            for i_theory, theory in enumerate(self.theories):
+                #find in directions
+                dir_idx = self.directions.index(theory['input_mapping'][action_idx])
+                mapping_probs[action_idx][dir_idx] += self.probas[i_theory]
+        return mapping_probs
 
     def print_top(self, theories, probs):
         probs = probs.copy()
@@ -158,12 +177,14 @@ class InferSelf:
         return np.all(predicted_pos == new_pos)
 
 
-    def compute_posteriors(self, prev_obs, new_obs, probas, action, compute_new_betas=False):
+    def compute_posteriors(self, prev_obs, new_obs, probas, action, compute_new_noise=False):
         # posterior of identity x noise is posterior of identity x posterior(noise | identity)
-        # update parameters of the beta distribution for the current theory by incrementing alpha is observation is not consistent
+        # update parameters of the noise distribution for the current theory by incrementing alpha if observation is not consistent
+        if self.args['hierarchical']:
+            return self.compute_posteriors_hierarchical(prev_obs, new_obs, probas, action, compute_new_noise)
         new_betas = []
         new_consistency_record = []
-        if compute_new_betas:
+        if compute_new_noise:
             if self.args['forget_param']==None:
                 decays = [1]*len(self.consistency_record[0])
             else:
@@ -171,7 +192,7 @@ class InferSelf:
             for i_theory, theory in enumerate(self.theories):
                 #now we are tracking consistent and inconsistent obs for each theory
                 obs_consistent =  self.consistency_record[i_theory] + [int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))]
-                new_b = self.args['beta_prior'].copy()
+                new_b = self.args['noise_prior_beta'].copy()
                 #prior obs, prev obs has weight e^-1/forget_param
                 for i, consistent in enumerate(obs_consistent[:-1]):
                     new_b[consistent] += decays[i]
@@ -191,6 +212,59 @@ class InferSelf:
             posteriors = posteriors / posteriors.sum()
         return posteriors, (new_betas, new_consistency_record)
 
+
+
+    #modify noise to be discrete
+    def compute_posteriors_hierarchical(self, prev_obs, new_obs, probas, action, compute_new_noise=False):
+        #how to update noise given change or no change?
+        no_change_new_noise = []
+        change_new_noise = []
+        new_noise = []
+        new_consistency_record = []
+
+        #update noise assuming no change
+        for i_theory, theory in enumerate(self.theories):
+            obs_consistent =  self.consistency_record[i_theory] + [int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))]
+            new_consistency_record.append(obs_consistent)
+            #this automatically takes into account possibility of change or no change
+            #how would we update the distrib if we knew there was no change at the last tpt?
+            #i think rAlpha will be the same as rGamma for last tpt
+            Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(np.array(obs_consistent)+1, 0.1,  self.args['noise_values_discrete'], self.args['noise_prior_discrete'], 'Backward')
+            #last col of alpha is nans after first run
+            no_change_distrib = Alpha[:,0,-1]
+            no_change_distrib = no_change_distrib/no_change_distrib.sum()
+            no_change_new_noise.append(no_change_distrib)
+            change_distrib = Alpha[:,1,-1]
+            change_distrib = change_distrib/change_distrib.sum()
+            change_new_noise.append(change_distrib)
+            #for last tpt
+            new_noise.append(rGamma[:,-1])
+        #all nans at second tpt!
+
+        #now compute probas of theories
+        #first compute posterior if no change, based on noise estimate given no change
+        no_change_posteriors = np.zeros(self.n_theories)
+        for i_theory, theory in enumerate(self.theories):
+            theory2 = theory.copy()
+            theory2['noise_params_discrete'] = no_change_new_noise[i_theory]
+            likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
+            posterior = probas[i_theory] * (likelihood ** self.args['likelihood_weight'])
+            no_change_posteriors[i_theory] = posterior
+
+        #first compute posterior if change, based on noise estimate given change
+        change_posteriors = np.zeros(self.n_theories)
+        for i_theory, theory in enumerate(self.theories):
+            theory2 = theory.copy()
+            theory2['noise_params_discrete'] = change_new_noise[i_theory]
+            likelihood = self.compute_likelihood(theory2, prev_obs, new_obs, action)
+            posterior = self.prior_probas[i_theory] * (likelihood ** self.args['likelihood_weight'])
+            change_posteriors[i_theory] = posterior  
+        #weighted sum of posteriors in the 2 cases
+        nc = np.sum(change_posteriors* self.p_change) + np.sum(no_change_posteriors* (1-self.p_change))
+        posteriors = ((change_posteriors * self.p_change) + (no_change_posteriors * (1-self.p_change)))/nc
+        return posteriors, (new_noise, new_consistency_record)
+
+
     def compute_likelihood(self, theory, prev_obs, new_obs, action):
         # probability of data (object positions) given theory and action
         # product of the probabilities of each of the observed movements
@@ -206,9 +280,9 @@ class InferSelf:
         new_pos = new_obj_pos[agent_id]
         predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
         if np.all(predicted_pos == new_pos):
-            proba_movements.append(1 - self.get_beta_mean(theory))
+            proba_movements.append(1 - self.get_noise_mean(theory))
         else:
-            proba_movements.append(self.get_beta_mean(theory))
+            proba_movements.append(self.get_noise_mean(theory))
         # move the agent in the map
         current_map[prev_pos[0], prev_pos[1]] = 0
         current_map[new_pos[0], new_pos[1]] = 4
@@ -246,9 +320,9 @@ class InferSelf:
         # mode 2: the agent moves towards the goal
         if mode is None:
             # decide whether to explore or exploit
-            #if self.n_theories == 1:
-            agent_probs = self.get_agent_probabilities(self.theories, self.probas)
-            if sorted(agent_probs.items(), key=lambda x: x[1], reverse=True)[0][1] >= self.args['threshold']:
+            #agent_probs = self.get_agent_probabilities(self.theories, self.probas)
+            #if sorted(agent_probs.items(), key=lambda x: x[1], reverse=True)[0][1] >= self.args['threshold']:
+            if np.max(self.probas)>self.args['threshold']:
                 mode = 2
             else:
                 mode = 1
@@ -408,7 +482,10 @@ class InferSelf:
             for theory_id in theory_ids:
                 theory = theories[theory_id]
                 agent_id = theory['agent_id']
-                noise = np.random.beta(*theory['beta_params'])
+                if self.args['hierarchical']:
+                    noise = np.random.choice(self.args['noise_values_discrete'], 1, p=theory['noise_params_discrete'])[0]
+                else:
+                    noise = np.random.beta(*theory['noise_params_beta'])
 
                 if np.random.rand() < noise:
                     candidate_actions = sorted(set(range(5)) - set([action]))
