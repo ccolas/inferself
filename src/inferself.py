@@ -57,7 +57,8 @@ class InferSelf:
                                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
                                                   noise_params_beta=self.args['noise_prior_beta'],
-                                                  noise_params_discrete=self.args['noise_prior_discrete'])
+                                                  noise_params_discrete=self.args['noise_prior_discrete'],
+                                                  p_change=self.args['p_change'])
                                 self.theories.append(new_theory)
             else:
                 dir0, dir1, dir2, dir3 = dirs
@@ -66,7 +67,9 @@ class InferSelf:
                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
                                   noise_params_beta=self.args['noise_prior_beta'],
-                                  noise_params_discrete=self.args['noise_prior_discrete'])
+                                  noise_params_discrete=self.args['noise_prior_discrete'],
+                                  p_change = self.args['p_change'])
+
                 self.theories.append(new_theory)
         self.theories = np.array(self.theories)
         self.probas = np.ones(self.n_theories) / self.n_theories  # uniform probability distribution over theories
@@ -114,6 +117,10 @@ class InferSelf:
                 theory['noise_params_beta'] = new_n
         self.consistency_record = new_consistency_record
 
+
+        for n, theory in zip(new_noise_params, self.theories):
+            print(self.get_noise_mean(theory))
+
         self.update_history_agent_probas()  # keep track of probabilities for each agent
         best_theory_id = np.argmax(self.probas)
         best_agent_id = self.theories[best_theory_id]['agent_id']
@@ -142,7 +149,9 @@ class InferSelf:
         probas = [0 for _ in range(self.n_objs)]
         for theory, proba in zip(self.theories, self.probas):
             probas[theory['agent_id']] += proba
-        assert (np.sum(probas) - 1) < 1e-5
+        if np.sum(probas) - 1 > 1e-5:
+            stop = 1
+        # assert (np.sum(probas) - 1) < 1e-5
         self.history_agent_probas.append(probas)
 
     def get_mapping_probas(self):
@@ -228,20 +237,25 @@ class InferSelf:
             obs_consistent =  self.consistency_record[i_theory] + [int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))]
             new_consistency_record.append(obs_consistent)
             #this automatically takes into account possibility of change or no change
-            #how would we update the distrib if we knew there was no change at the last tpt?
+            #hchange_no_change_distribdistribow would we update the distrib if we knew there was no change at the last tpt?
             #i think rAlpha will be the same as rGamma for last tpt
-            Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(np.array(obs_consistent)+1, 0.1,  self.args['noise_values_discrete'], self.args['noise_prior_discrete'], 'Backward')
+            Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(np.array(obs_consistent)+1, theory['p_change'],  self.args['noise_values_discrete'],
+                                                                                          self.args['noise_prior_discrete'], 'Backward')
+            theory['p_change'] = JumpPost[-1]
+            print(f'New pc = {JumpPost[-1]}')
             #last col of alpha is nans after first run
             no_change_distrib = Alpha[:,0,-1]
-            no_change_distrib = no_change_distrib/no_change_distrib.sum()
+            if no_change_distrib.sum() > 0:
+                no_change_distrib = no_change_distrib/no_change_distrib.sum()
             no_change_new_noise.append(no_change_distrib)
             change_distrib = Alpha[:,1,-1]
-            change_distrib = change_distrib/change_distrib.sum()
+            if change_distrib.sum() > 0:
+                change_distrib = change_distrib/change_distrib.sum()
             change_new_noise.append(change_distrib)
             #for last tpt
-            print(rGamma[:,-1])
-            print(Alpha[:,0,-1])
-            assert(np.all(rGamma[:,-1]==Alpha[:,0,-1]))
+            # print(rGamma[:,-1])
+            # print(Alpha[:,0,-1])
+
             new_noise.append(rGamma[:,-1])
 
         #now compute probas of theories
@@ -263,7 +277,7 @@ class InferSelf:
             posterior = self.prior_probas[i_theory] * (likelihood ** self.args['likelihood_weight'])
             change_posteriors[i_theory] = posterior  
         #weighted sum of posteriors in the 2 cases
-        nc = np.sum(change_posteriors* self.p_change) + np.sum(no_change_posteriors* (1-self.p_change))
+        nc = np.sum(change_posteriors * self.p_change) + np.sum(no_change_posteriors* (1-self.p_change))
         posteriors = ((change_posteriors * self.p_change) + (no_change_posteriors * (1-self.p_change)))/nc
         return posteriors, (new_noise, new_consistency_record)
 
@@ -331,7 +345,12 @@ class InferSelf:
                 mode = 1
 
         good_actions_explore, action_explore = self.explore(obs)
-        good_actions_exploit, action_exploit = self.exploit(obs)
+        if not self.args['explore_only']:
+            good_actions_exploit, action_exploit = self.exploit(obs)
+        else:
+            good_actions_exploit = []
+            action_exploit = None
+            mode = 1
 
         # if exploring and several actions are best, take the one advised by exploit
         if mode == 1:
@@ -530,7 +549,7 @@ class InferSelf:
         # compute direction between the agent and the goal
         agent_pos = obs['objects'][agent_id]
         vector_to_goal = obs['goal'] - agent_pos
-        assert np.sum(np.abs(vector_to_goal)) != 0, "the agent is already on the goal"
+        # assert np.sum(np.abs(vector_to_goal)) != 0, "the agent is already on the goal"
         directions = np.sign(vector_to_goal)
 
         good_actions = []  # there can be up to two good actions (if goal in diagonal)

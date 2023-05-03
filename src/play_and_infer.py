@@ -9,8 +9,11 @@ import numpy as np
 #TODO:
 #infer distrib over p_change?
 
-
-ENV = 'contingency-noisy-v0'
+ENV = 'changeAgent-noisy-v0'
+temp_noise = np.array([10, 10, 10, 5, 3, 1, 0.5, 0.1, 0.05, 0.01, 0.01])
+noise_values = np.array([0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])  #11
+# temp_noise = np.array([5, 1, 1.])
+temp_noise /= sum(temp_noise)
 ARGS = dict(n_objs=4,
             biased_input_mapping=False,
             bias_bot_mvt='uniform', # static or uniform
@@ -19,14 +22,15 @@ ARGS = dict(n_objs=4,
             infer_mapping=False,
             threshold=0.9, # confidence threshold for agent id
             noise_prior_beta=[1, 15],
-            noise_prior_discrete=np.array([0.15,0.2,0.15,0.15,0.1,0.1] + ([.01]*15)), #np.full(21, 1/21),
-            noise_values_discrete= np.arange(21)/20,
+            noise_prior_discrete=temp_noise, #np.full(21, 1/21),
+            noise_values_discrete= noise_values,
             forget_param=None, #the smaller this is, the more forgetful we are when computing noise
             likelihood_weight=1,
             explicit_resetting=False,
             print_status=True,
             hierarchical=True,
-            p_change=0
+            p_change=0.1,
+            explore_only=True
             )
 
 def play_and_infer(env=ENV):
