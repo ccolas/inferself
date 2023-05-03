@@ -10,13 +10,13 @@ import numpy as np
 #infer distrib over p_change?
 
 
-ENV = 'changeAgent-shuffle-noisy-v0'
+ENV = 'contingency-noisy-v0'
 ARGS = dict(n_objs=4,
             biased_input_mapping=False,
             bias_bot_mvt='uniform', # static or uniform
             simulation='sampling',  # exhaustive or sampling
             n_simulations=1,  # number of simulations if sampling
-            infer_mapping=True,
+            infer_mapping=False,
             threshold=0.9, # confidence threshold for agent id
             noise_prior_beta=[1, 15],
             noise_prior_discrete=np.array([0.15,0.2,0.15,0.15,0.1,0.1] + ([.01]*15)), #np.full(21, 1/21),
@@ -24,9 +24,9 @@ ARGS = dict(n_objs=4,
             forget_param=None, #the smaller this is, the more forgetful we are when computing noise
             likelihood_weight=1,
             explicit_resetting=False,
-            print_status=False,
+            print_status=True,
             hierarchical=True,
-            p_change=0.1
+            p_change=0
             )
 
 def play_and_infer(env=ENV):

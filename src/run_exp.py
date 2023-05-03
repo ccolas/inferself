@@ -105,7 +105,7 @@ def get_prob_of_true(s, true_agent,true_mapping):
             return s.probas[i_theory]
 
 
-with open('output/out.csv', 'w') as csvfile:
+with open('output/out2.csv', 'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=['env', 'agent_type', 'tpt', 'run', 'success', 'obj_pos', 'map', 'action', 'true_self', 'all_self_probas', 'true_mapping', 'all_mapping_probas', 'true_theory_probas', 'top_theory', 'top_theory_proba'])
             writer.writeheader()
 

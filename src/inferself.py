@@ -158,7 +158,7 @@ class InferSelf:
     def print_top(self, theories, probs):
         probs = probs.copy()
         print("top theories:")
-        for _ in range(5):
+        for _ in range(min(len(probs),5)):
             id = np.argmax(probs)
             print("agent id: ", theories[id]['agent_id'], ", prob: ", probs[id])
             probs[id] = 0
@@ -196,6 +196,7 @@ class InferSelf:
                 #prior obs, prev obs has weight e^-1/forget_param
                 for i, consistent in enumerate(obs_consistent[:-1]):
                     new_b[consistent] += decays[i]
+                
                 #current obs
                 new_b[obs_consistent[-1]] += 1
 
@@ -238,8 +239,10 @@ class InferSelf:
             change_distrib = change_distrib/change_distrib.sum()
             change_new_noise.append(change_distrib)
             #for last tpt
+            print(rGamma[:,-1])
+            print(Alpha[:,0,-1])
+            assert(np.all(rGamma[:,-1]==Alpha[:,0,-1]))
             new_noise.append(rGamma[:,-1])
-        #all nans at second tpt!
 
         #now compute probas of theories
         #first compute posterior if no change, based on noise estimate given no change
