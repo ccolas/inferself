@@ -9,17 +9,18 @@ import numpy as np
 #TODO:
 #infer distrib over p_change?
 
-ENV = 'changeAgent-noisy-v0'
+ENV = 'changeAgent-shuffle-noisy-v0'
 temp_noise = np.array([10, 10, 10, 5, 3, 1, 0.5, 0.1, 0.05, 0.01, 0.01])
 noise_values = np.array([0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])  #11
-# temp_noise = np.array([5, 1, 1.])
+# temp_noise = np.array([1, 1, 1.])
+# noise_values = np.array([0, 0.05, 0.1])
 temp_noise /= sum(temp_noise)
 ARGS = dict(n_objs=4,
             biased_input_mapping=False,
             bias_bot_mvt='uniform', # static or uniform
             simulation='sampling',  # exhaustive or sampling
             n_simulations=1,  # number of simulations if sampling
-            infer_mapping=False,
+            infer_mapping=True,
             threshold=0.9, # confidence threshold for agent id
             noise_prior_beta=[1, 15],
             noise_prior_discrete=temp_noise, #np.full(21, 1/21),
@@ -30,7 +31,7 @@ ARGS = dict(n_objs=4,
             print_status=True,
             hierarchical=True,
             p_change=0.1,
-            explore_only=True
+            explore_only=True  # if true, the agent only explores and the goal is removed from the env
             )
 
 def play_and_infer(env=ENV):
@@ -39,7 +40,9 @@ def play_and_infer(env=ENV):
     env = gym.make(env)
     prev_obs, prev_info = env.reset()
     env.render(None)
-    args = ARGS
+    args = ARGS.copy()
+    if args['explore_only']:
+        env.no_goal = True
     args.update(n_objs=env.n_candidates)
     inferself = InferSelf(env=env,
                           args=args)
