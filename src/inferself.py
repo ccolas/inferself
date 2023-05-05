@@ -29,8 +29,6 @@ class InferSelf:
         self.history_agent_probas = [[1/self.n_objs for _ in range(self.n_objs)]]
         self.reset_memory()
         self.reset_theories()
-        self.prior_probas = self.probas
-        self.consistency_record = [[]]*self.n_theories
         self.fig = None
         self.p_change = args['p_change']
 
@@ -56,8 +54,8 @@ class InferSelf:
                                 new_theory = dict(agent_id=agent_id,
                                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
-                                                  noise_params_beta=self.args['noise_prior_beta'],
-                                                  noise_params_discrete=self.args['noise_prior_discrete'],
+                                                  noise_params_beta=self.args['noise_prior_beta'].copy(),
+                                                  noise_params_discrete=self.args['noise_prior_discrete'].copy(),
                                                   p_change=self.args['p_change'])
                                 self.theories.append(new_theory)
             else:
@@ -66,8 +64,8 @@ class InferSelf:
                 new_theory = dict(agent_id=agent_id,
                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
-                                  noise_params_beta=self.args['noise_prior_beta'],
-                                  noise_params_discrete=self.args['noise_prior_discrete'],
+                                  noise_params_beta=self.args['noise_prior_beta'].copy(),
+                                  noise_params_discrete=self.args['noise_prior_discrete'].copy(),
                                   p_change = self.args['p_change'])
 
                 self.theories.append(new_theory)
@@ -76,6 +74,8 @@ class InferSelf:
         if self.args['biased_input_mapping']:
             self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 50
             self.probas /= self.probas.sum()
+        self.prior_probas = self.probas
+        self.consistency_record = [[]] * self.n_theories
 
 
     def reset_memory(self):
@@ -216,10 +216,17 @@ class InferSelf:
         posteriors = np.zeros(self.n_theories)
         for i_theory, theory in enumerate(self.theories):
             likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
+            print(likelihood)
             posterior = probas[i_theory] * (likelihood ** self.args['likelihood_weight'])
             posteriors[i_theory] = posterior
         if posteriors.sum() > 0:
             posteriors = posteriors / posteriors.sum()
+
+        # make sure we don't get perfect confidence because that prevents any further learning
+        if np.max(posteriors) > 0.99:
+            posteriors[np.argmax(posteriors)] = 0.99
+            indexes = np.array([i for i in range(len(posteriors)) if i != np.argmax(posteriors)])
+            posteriors[indexes] = 0.01 / len(indexes)
         return posteriors, (new_betas, new_consistency_record)
 
 
@@ -337,12 +344,13 @@ class InferSelf:
         # mode 2: the agent moves towards the goal
         if mode is None:
             # decide whether to explore or exploit
-            #agent_probs = self.get_agent_probabilities(self.theories, self.probas)
-            #if sorted(agent_probs.items(), key=lambda x: x[1], reverse=True)[0][1] >= self.args['threshold']:
-            if np.max(self.probas)>self.args['threshold']:
+            agent_probs = self.get_agent_probabilities(self.theories, self.probas)
+            if sorted(agent_probs.items(), key=lambda x: x[1], reverse=True)[0][1] >= self.args['threshold']:
+            # if np.max(self.probas)>self.args['threshold']:
                 mode = 2
             else:
                 mode = 1
+        # print(np.max(self.probas))
 
         if self.args['explore_randomly']:
             good_actions_explore = [0, 1, 2, 3]

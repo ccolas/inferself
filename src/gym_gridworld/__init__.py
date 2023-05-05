@@ -54,6 +54,12 @@ register(id='contingency-shuffle-noisy-v0',
                      shuffle_keys=True,
                      noise=0.1))
 
+register(id='changeAgent-shuffle-noisy-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     shuffle_keys=True,
+                     noise=0.1))
+
 register(id='changeAgent-shuffle-noisy-5-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='change_agent',

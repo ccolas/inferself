@@ -167,6 +167,8 @@ class GridworldEnv(gym.Env):
         else:
             action_dir = self.action_pos_dict[action]
         next_agent_pos = self.candidates_pos[self.agent_id] + action_dir
+        if not self.no_goal:
+            stop = 1
         if self.is_empty(next_agent_pos, agent=True):
             new_candidates_pos[self.agent_id] = next_agent_pos
             if np.all(next_agent_pos == self.goal_pos):

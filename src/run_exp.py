@@ -19,7 +19,7 @@ temp_noise = np.array([1, 1, 1., 1, 1])
 discrete_noise_values = np.array([0, 0.05, 0.1, 0.15, 0.2])
 proba_discrete_noise = temp_noise / sum(temp_noise)
 
-expe_name = 'one_switch'
+expe_name = 'with_agent_change'
 
 if expe_name == 'with_agent_change':
     env_list = ['changeAgent-v0', 'changeAgent-noisy-v0', 'changeAgent-shuffle-noisy-v0']
@@ -102,7 +102,7 @@ def run_agent_in_env(env_name, agent, with_goal, keys, time_limit):
     args = get_args(agent, with_goal)
     env = gym.make(env_name)
     data = dict(zip(keys, [[] for _ in range(len(keys))]))
-    if args['explore_only']:
+    if args['explore_only'] or not with_goal:
         env.no_goal = True
     prev_obs, prev_info = env.reset()
     args.update(n_objs=env.n_candidates)
@@ -147,7 +147,7 @@ def run_agent_in_env(env_name, agent, with_goal, keys, time_limit):
     return data
 
 
-def run_experiment(exp_name, envs, agents, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/", overwrite=True, time_limit=150):
+def run_experiment(exp_name, envs, agents, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/", overwrite=False, time_limit=100):
     data_path = save_dir + exp_name + '.pkl'
     print(f'Running experiment {exp_name}, saving to {data_path}')
 
@@ -160,7 +160,7 @@ def run_experiment(exp_name, envs, agents, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c
     if not overwrite:
         if os.path.exists(data_path):
             with open(data_path, 'rb') as f:
-                data = pickle.load(data_path)
+                data = pickle.load(f)
 
     # loop over environments, agents and seeds
     for i_env, env_name in enumerate(envs):

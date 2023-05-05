@@ -10,8 +10,8 @@ import numpy as np
 #infer distrib over p_change?
 
 ENV = 'changeAgent-shuffle-noisy-v0'
-temp_noise = np.array([10, 10, 10, 5, 3, 1, 0.5, 0.1, 0.05, 0.01, 0.01])
-noise_values = np.array([0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])  #11
+# temp_noise = np.array([10, 10, 10, 5, 3, 1, 0.5, 0.1, 0.05, 0.01, 0.01])
+# noise_values = np.array([0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])  #11
 temp_noise = np.array([1, 1, 1., 1, 1])
 noise_values = np.array([0, 0.05, 0.1, 0.15, 0.2])
 temp_noise /= sum(temp_noise)
@@ -19,7 +19,7 @@ ARGS = dict(n_objs=4,
             biased_input_mapping=False,
             bias_bot_mvt='uniform', # static or uniform
             simulation='sampling',  # exhaustive or sampling
-            n_simulations=1,  # number of simulations if sampling
+            n_simulations=10,  # number of simulations if sampling
             infer_mapping=True,
             threshold=0.9, # confidence threshold for agent id
             noise_prior_beta=[1, 15],
@@ -31,7 +31,8 @@ ARGS = dict(n_objs=4,
             print_status=True,
             hierarchical=True,
             p_change=0.1,
-            explore_only=True  # if true, the agent only explores and the goal is removed from the env
+            explore_only=True,  # if true, the agent only explores and the goal is removed from the env
+            explore_randomly=True
             )
 
 def play_and_infer(env=ENV):
