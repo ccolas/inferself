@@ -216,7 +216,6 @@ class InferSelf:
         posteriors = np.zeros(self.n_theories)
         for i_theory, theory in enumerate(self.theories):
             likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
-            print(likelihood)
             posterior = probas[i_theory] * (likelihood ** self.args['likelihood_weight'])
             posteriors[i_theory] = posterior
         if posteriors.sum() > 0:
@@ -338,11 +337,11 @@ class InferSelf:
             agent_probs[id] = agent_probs.get(id, 0) + probs[i]
         return agent_probs
 
-    def get_action(self, obs, mode=None):
+    def get_action(self, obs, enforce_mode=None):
         # there are two modes of actions
         # mode 1: the agent tries to infer which object it is and what the action mapping is in an optimal way
         # mode 2: the agent moves towards the goal
-        if mode is None:
+        if enforce_mode is None:
             # decide whether to explore or exploit
             agent_probs = self.get_agent_probabilities(self.theories, self.probas)
             if sorted(agent_probs.items(), key=lambda x: x[1], reverse=True)[0][1] >= self.args['threshold']:
@@ -350,6 +349,8 @@ class InferSelf:
                 mode = 2
             else:
                 mode = 1
+        else:
+            mode = enforce_mode
         # print(np.max(self.probas))
 
         if self.args['explore_randomly']:
@@ -358,7 +359,7 @@ class InferSelf:
         else:
             good_actions_explore, action_explore = self.explore(obs)
 
-        if not self.args['explore_only']:
+        if not self.args['explore_only'] and not enforce_mode==1:
             good_actions_exploit, action_exploit = self.exploit(obs)
         else:
             good_actions_exploit = []
