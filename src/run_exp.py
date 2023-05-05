@@ -129,10 +129,18 @@ for env_name in env_list:
                 obs, rew, done, info = env.step(action)
                 #env.render(None)
                 theory, proba = inferself.update_theory(prev_info['semantic_state'], info['semantic_state'], action)
+                
+                change=False
+                if t>0:
+                    if curr_true_agent != env.unwrapped.agent_id:
+                        change = True
+                curr_true_agent = env.unwrapped.agent_id
+
                 #obs contains object positions, goal pos, 
                 #true agent id, predicted agent, prob of true agent, prob of true mapping, prob of top theory
                 true_theory_prob = get_prob_of_true(inferself, env.unwrapped.agent_id, env.unwrapped.action_pos_dict)
                 d_list.append(dict(env=env_name, agent_type=agent, tpt=t, run=i,
+                     agent_change=change,
                      success=info["success"],
                      obj_pos=info['semantic_state']["objects"],
                      map=info['semantic_state']["map"].flatten(),
