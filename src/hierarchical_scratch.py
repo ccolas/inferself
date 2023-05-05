@@ -130,19 +130,19 @@ def ForwardBackward_BernoulliJump(obs, pJ, pgrid, Alpha0, Pass='Forward'):
             else: raise ValueError
 
             if t == N - 1:
-                next_beta = np.ones(n_noise) / (2 * n_noise)
+                Beta[:, 0, t] = 1  # these values will be removed in the shift
+                Beta[:, 1, t] = 1
             else:
                 next_beta = (Beta[:, 0, t + 1] + Beta[:, 1, t + 1])
+                # No Jump from t to t+1
+                # take only diagonal elements
+                Beta[:, 0, t] = (1 - pJ) * (LL * next_beta)
 
-            # No Jump from t to t+1
-            # take only diagonal elements
-            Beta[:, 0, t] = (1 - pJ) * (LL * next_beta)
-
-            # Jump from t to t+1
-            # sum over non diagonal elements
-            # NB: there is no transpose here on Trans because we sum over
-            # TARGET location (not ORIGIN)
-            Beta[:, 1, t] = pJ * LL * (Trans @ next_beta)
+                # Jump from t to t+1
+                # sum over non diagonal elements
+                # NB: there is no transpose here on Trans because we sum over
+                # TARGET location (not ORIGIN)
+                Beta[:, 1, t] = pJ * LL * (Trans @ next_beta)
 
             # scale beta to sum = 1. This normalization is only for convenience,
             # since we don't need this scaling factor in the end.
@@ -151,11 +151,11 @@ def ForwardBackward_BernoulliJump(obs, pJ, pgrid, Alpha0, Pass='Forward'):
             Beta[:, 1, t] = Beta[:, 1, t] / NormalizationCst
 
         # Shift Beta so that Beta[:,:,t] is the posterior given s(t+1:N)
-        # newBeta = np.zeros_like(Beta)
+        newBeta = np.zeros_like(Beta)
         # # newBeta[:, :, 0] = 1 / (n * n)  # TODO: what is this?
-        # newBeta[:, :, 0] = 1 / (2 * n_noise)
-        # newBeta[:, :, 1:] = Beta[:, :, :-1]
-        # Beta = newBeta.copy()
+        newBeta[:, :, 0] = 1 / (2 * n_noise)
+        newBeta[:, :, 1:] = Beta[:, :, :-1]
+        Beta = newBeta.copy()
 
     # COMBINE FORWARD AND BACKWARD PASS
     # =================================
@@ -179,8 +179,8 @@ def ForwardBackward_BernoulliJump(obs, pJ, pgrid, Alpha0, Pass='Forward'):
         GammaJ = Alpha[:, 1, :] * ((1 / pJ) * Beta[:, 1, :])
         GammaJ = GammaJ / cst
 
-        # GammaJ0 = Alpha[:, 0, :] * ((1 / (1 - pJ)) * Beta[:, 0, :])
-        # GammaJ0 = GammaJ0 / cst
+        GammaJ0 = Alpha[:, 0, :] * ((1 / (1 - pJ)) * Beta[:, 0, :])
+        GammaJ0 = GammaJ0 / cst
 
         JumpPost = np.sum(GammaJ, axis=0)
         if np.any(JumpPost > 1):
@@ -203,7 +203,7 @@ if __name__ == '__main__':
     p = np.random.uniform(0, 1)
     for j in range(100):
         change = np.random.rand() < p_change
-        change=j==50
+        # change=j==50
         if change:
             p = np.random.uniform(0, 1)
         probabilities.append(p)
