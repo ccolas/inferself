@@ -1,9 +1,6 @@
 import numpy as np
 
-pgrid = np.array([0.  , 0.05, 0.1 ])
-Alpha0=np.array([5, 1, 1.]) / 7
-pJ=0.1
-s=2
+
 def ForwardBackward_BernoulliJump(obs, pJ, pgrid, Alpha0, Pass='Forward'):
     # Forward-Backward algorithm to solve a hidden markov model, in which the
     # hidden state is a Bernoulli parameter x controlling the observed outcome s.
@@ -186,8 +183,8 @@ def ForwardBackward_BernoulliJump(obs, pJ, pgrid, Alpha0, Pass='Forward'):
         # GammaJ0 = GammaJ0 / cst
 
         JumpPost = np.sum(GammaJ, axis=0)
-        if JumpPost[-1] > 1:
-            stop = 1
+        if np.any(JumpPost > 1):
+            print('JumpPost problem')
         # JumpPost = [0.1]
     else:
         rGamma = np.array([])
@@ -199,5 +196,33 @@ def ForwardBackward_BernoulliJump(obs, pJ, pgrid, Alpha0, Pass='Forward'):
 
 
 if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+    probabilities = []
+    outcomes = []
+    p_change = 0.1
+    p = np.random.uniform(0, 1)
+    for j in range(100):
+        change = np.random.rand() < p_change
+        change=j==50
+        if change:
+            p = np.random.uniform(0, 1)
+        probabilities.append(p)
+        outcomes.append(np.random.rand() > p)
+    outcomes = np.array(outcomes) + 1
+    pgrid = np.linspace(0, 1, 20)
+    Alpha0 = np.ones(pgrid.size) / pgrid.size
+    pJ = 0.05
     # ForwardBackward_BernoulliJump(s=[1], pJ=pJ, Alpha0=Alpha0, pgrid=pgrid, Pass='Backward')
-    ForwardBackward_BernoulliJump(obs=[1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 2, 2, 2, 1, 2, 1, 2, 1, 2], pJ=pJ, Alpha0=Alpha0, pgrid=pgrid, Pass='Backward')
+    Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(obs=outcomes, pJ=pJ, Alpha0=Alpha0, pgrid=pgrid, Pass='Backward')
+    predicted_probas = pgrid @ rGamma
+    plt.figure()
+    plt.plot(probabilities, label='p')
+    plt.plot(predicted_probas, label='predicted p')
+    plt.plot(JumpPost, label='p_change')
+    plt.legend()
+    plt.ylim([0, 1])
+    for i in range(1, len(probabilities)):
+        if probabilities[i-1] != probabilities[i]:
+            plt.axvline(x=i, ymax=1, ymin=0, color='black')
+    plt.show()
+    stop = 1
