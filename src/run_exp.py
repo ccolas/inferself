@@ -1,123 +1,74 @@
 from copy import deepcopy
-
+import pickle
+import os
 import gym
 import gym_gridworld
 from inferself import InferSelf
 import csv
 import numpy as np
 
-
-
-#TODO: also track prob of correct action mapping?
+# TODO: also track prob of correct action mapping?
 #      slightly confusing bc we don't try to get this exactly right
-#change explore so that we also figure out the action mapping?
-#random exploration as one version
+# change explore so that we also figure out the action mapping?
+# random exploration as one version
 
 
 n_runs = 10
-env_list = ['logic-v0', 'contingency-v0', 'changeAgent-v0', 'logic-shuffle-v0', 'contingency-shuffle-v0', 'changeAgent-shuffle-v0', 'logic-noisy-v0', 'contingency-noisy-v0', 'changeAgent-noisy-v0', 'logic-shuffle-noisy-v0', 'changeAgent-shuffle-noisy-v0', 'contingency-shuffle-noisy-v0']
+env_list = ['logic-v0', 'logic-noisy-v0', 'logic-shuffle-v0', 'logic-shuffle-noisy-v0',
+            'contingency-v0', 'contingency-noisy-v0', 'contingency-shuffle-v0', 'contingency-shuffle-noisy-v0',
+            'changeAgent-v0', 'changeAgent-noisy-v0', 'changeAgent-shuffle-v0', 'changeAgent-shuffle-noisy-v0']
+
+temp_noise = np.array([1, 1, 1., 1, 1])
+discrete_noise_values = np.array([0, 0.05, 0.1, 0.15, 0.2])
+proba_discrete_noise = temp_noise / sum(temp_noise)
+
+variants = ['base', 'no_infer_mapping', 'explicit_resetter', 'current_focused', 'current_focused_forgetter', 'hierarchical', 'random_explo', 'biased_action_mapping']
 
 
-discrete_noise_prior = np.array([10, 10, 10, 5, 3, 1, 0.5, 0.1, 0.05, 0.01, 0.01])
-discrete_noise_prior = discrete_noise_prior/sum(discrete_noise_prior)
-discrete_noise_values = np.array([0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])
+def get_args(variant, with_goal=False):
+    args = dict(n_objs=4,
+                biased_input_mapping=False,
+                bias_bot_mvt='uniform',  # static or uniform
+                simulation='sampling',  # exhaustive or sampling
+                n_simulations=50,  # number of simulations if sampling
+                infer_mapping=True,
+                threshold=0.9,  # confidence threshold for agent id
+                noise_prior_beta=[1, 15],
+                noise_prior_discrete=proba_discrete_noise,
+                noise_values_discrete=discrete_noise_values,
+                forget_param=None,  # the smaller this is, the more forgetful we are when computing noise
+                likelihood_weight=1,
+                explicit_resetting=False,
+                print_status=False,
+                hierarchical=False,
+                p_change=0.1,
+                explore_only=not with_goal,  # if true, the agent only explores and the goal is removed from the env
+                explore_randomly=False
+                )
+    if variant == 'base':
+        pass
+    elif variant == 'no_infer_mapping':
+        args['infer_mapping'] = False
+    elif variant == 'explicit_resetter':
+        args['explicit_resetting'] = True
+    elif variant == 'current_focused':
+        args['likelihood_weight'] = 2
+    elif variant == 'current_focused_forgetter':
+        args['likelihood_weight'] = 2
+        args['forget_param'] = 5
+    elif variant == 'hierarchical':
+        args['hierarchical'] = True
+    elif variant == 'random_explo':
+        args['explore_randomly'] = True
+    elif variant == 'biased_action_mapping':
+        args['biased_input_mapping'] = True
+    else:
+        raise NotImplementedError
+
+    return args
 
 
-args1 = dict(n_objs=4,
-            biased_input_mapping=False,
-            bias_bot_mvt='uniform', # static or uniform
-            simulation='sampling',  # exhaustive or sampling
-            n_simulations=50,  # number of simulations if sampling
-            infer_mapping=True,
-            threshold=0.9, # confidence threshold for agent id
-            noise_prior_beta=[1, 15],
-            noise_prior_discrete=discrete_noise_prior,
-            noise_values_discrete= discrete_noise_values,
-            forget_param=None, #the smaller this is, the more forgetful we are when computing noise
-            likelihood_weight=1,
-            explicit_resetting=False,
-            print_status=False,
-            hierarchical=False,
-            p_change=0.1
-            )
-args2 = dict(n_objs=4,
-            biased_input_mapping=False,
-            bias_bot_mvt='uniform', # static or uniform
-            simulation='sampling',  # exhaustive or sampling
-            n_simulations=50,  # number of simulations if sampling
-            infer_mapping=True,
-            threshold=0.9, # confidence threshold for agent id
-            noise_prior_beta=[1, 15],
-            noise_prior_discrete=discrete_noise_prior,
-            noise_values_discrete= discrete_noise_values,
-            forget_param=None, #the smaller this is, the more forgetful we are when computing noise
-            likelihood_weight=1,
-            explicit_resetting=True,
-            print_status=False,
-            hierarchical=False,
-            p_change=0.1
-            )
-
-args3 = dict(n_objs=4,
-            biased_input_mapping=False,
-            bias_bot_mvt='uniform', # static or uniform
-            simulation='sampling',  # exhaustive or sampling
-            n_simulations=50,  # number of simulations if sampling
-            infer_mapping=True,
-            threshold=0.9, # confidence threshold for agent id
-            noise_prior_beta=[1, 15],
-            noise_prior_discrete=discrete_noise_prior,
-            noise_values_discrete= discrete_noise_values,
-            forget_param=None, #the smaller this is, the more forgetful we are when computing noise
-            likelihood_weight=2,
-            explicit_resetting=False,
-            print_status=False,
-            hierarchical=False,
-            p_change=0.1
-            )
-
-args4 = dict(n_objs=4,
-            biased_input_mapping=False,
-            bias_bot_mvt='uniform', # static or uniform
-            simulation='sampling',  # exhaustive or sampling
-            n_simulations=50,  # number of simulations if sampling
-            infer_mapping=True,
-            threshold=0.9, # confidence threshold for agent id
-            noise_prior_beta=[1, 15],
-            noise_prior_discrete=discrete_noise_prior,
-            noise_values_discrete= discrete_noise_values,
-            forget_param=5, #the smaller this is, the more forgetful we are when computing noise
-            likelihood_weight=2,
-            explicit_resetting=False,
-            print_status=False,
-            hierarchical=False,
-            p_change=0.1
-            )
-
-args5 = dict(n_objs=4,
-            biased_input_mapping=False,
-            bias_bot_mvt='uniform', # static or uniform
-            simulation='sampling',  # exhaustive or sampling
-            n_simulations=50,  # number of simulations if sampling
-            infer_mapping=True,
-            threshold=0.9, # confidence threshold for agent id
-            noise_prior_beta=[1, 15],
-            noise_prior_discrete=discrete_noise_prior,
-            noise_values_discrete= discrete_noise_values,
-            forget_param=None, #the smaller this is, the more forgetful we are when computing noise
-            likelihood_weight=1,
-            explicit_resetting=False,
-            print_status=False,
-            hierarchical=True,
-            p_change=0.1
-            )
-
-
-agent_dict= dict(base=args1, explicit_resetter=args2, current_focused=args3, current_focused_forgetter=args4,hierarchical=args5)
-
-
-
-def get_prob_of_true(s, true_agent,true_mapping):
+def get_prob_of_true(s, true_agent, true_mapping):
     for i_theory, theory in enumerate(s.theories):
         found_it = False
         if theory['agent_id'] == true_agent:
@@ -126,65 +77,91 @@ def get_prob_of_true(s, true_agent,true_mapping):
                 if np.any(theory['input_mapping'][i] != d):
                     found_it = False
         if found_it:
-            return s.probas[i_theory]
+            return s.probas[i_theory], s.get_noise_mean(s.theories[i_theory])
 
 
+def run_agent_in_env(env_name, agent, with_goal, keys, time_limit):
+    # run exp for this env/arg set
+    args = get_args(agent, with_goal)
+    env = gym.make(env_name)
+    data = dict(zip(keys, [[] for _ in range(len(keys))]))
+    if args['explore_only']:
+        env.no_goal = True
+    prev_obs, prev_info = env.reset()
+    args.update(n_objs=env.n_candidates)
+    inferself = InferSelf(env=env, args=args)
+    previous_agent = None
+    for t in range(time_limit):
+        action = inferself.get_action(prev_info['semantic_state'])
+        obs, rew, done, info = env.step(action)
+        theory, proba = inferself.update_theory(prev_info['semantic_state'], info['semantic_state'], action)
+
+        # did the agent change?
+        if previous_agent != env.unwrapped.agent_id and t > 0:
+            change = True
+        else:
+            change = False
+        previous_agent = env.unwrapped.agent_id
+
+        # obs contains object positions, goal pos,
+        # true agent id, predicted agent, prob of true agent, prob of true mapping, prob of top theory
+        true_theory_prob, noise_mean = get_prob_of_true(inferself, env.unwrapped.agent_id, env.unwrapped.action_pos_dict)
+        new_data = dict(tpt=t,
+                        agent_change=change,
+                        success=info["success"],
+                        obj_pos=info['semantic_state']["objects"],
+                        map=info['semantic_state']["map"].flatten(),
+                        action=action,
+                        true_self=env.unwrapped.agent_id,
+                        all_self_probas=inferself.history_agent_probas[-1],
+                        true_mapping=env.unwrapped.action_pos_dict,
+                        all_mapping_probas=inferself.get_mapping_probas(),
+                        true_theory_probas=true_theory_prob,
+                        agent_found=true_theory_prob > 0.9,
+                        true_theory_noise_mean=noise_mean,
+                        top_theory=theory,
+                        top_theory_proba=proba)  # which theory is correct? get prob of that theory
+        for k in new_data.keys():
+            data[k].append(new_data[k])
+        prev_info = deepcopy(info)
+        if done:
+            break
+    return data
+
+
+def run_experiment(exp_name, envs, agents, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/", overwrite=True, time_limit=150):
+    data_path = save_dir + exp_name + '.pkl'
+    print(f'Running experiment {exp_name}, saving to {data_path}')
+
+    keys = ['tpt', 'success', 'obj_pos', 'map', 'action', 'true_self', 'all_self_probas', 'true_mapping', 'all_mapping_probas', 'agent_found',
+            'true_theory_probas', 'true_theory_noise_mean', 'top_theory', 'top_theory_proba']
+    # dict with all data
+    data = dict()
+
+    # load previous results
+    if not overwrite:
+        if os.path.exists(data_path):
+            with open(data_path, 'rb') as f:
+                data = pickle.load(data_path)
+
+    # loop over environments, agents and seeds
+    for with_goal in [True, False]:
+        for i_env, env_name in enumerate(envs):
+            env_name = env_name + '_' + with_goal
+            if env_name not in data.keys(): data[env_name] = dict()
+            print(f"  Env: {env_name} ({i_env + 1} / {len(envs)})")
+            for i_agent, agent in enumerate(agents):
+                print(f"    Agent: {agent} ({i_agent + 1} / {len(agents)})")
+                if agent not in data[env_name].keys(): data[env_name][agent] = dict()
+                print(agent)
+                for i in range(n_runs):
+                    print(f'      Seed {i + 1} / {n_runs}')
+                    if str(i) not in data[env_name][agent].keys():
+                        data[env_name][agent][str(i)] = run_agent_in_env(env_name, agent, with_goal, keys, time_limit)
+                        with open(data_path, 'wb') as f:
+                            pickle.dump(data, f)
 
 
 if __name__ == '__main__':
-    with open('output/out2.csv', 'w') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=['env', 'agent_type', 'tpt', 'run', 'success', 'obj_pos', 'map', 'action', 'true_self', 'all_self_probas', 'true_mapping', 'all_mapping_probas', 'true_theory_probas', 'top_theory', 'top_theory_proba'])
-            writer.writeheader()
+    run_experiment(exp_name='test', envs=env_list, agents=variants)
 
-for env_name in env_list:
-    print(env_name)
-    for agent, args in agent_dict.items():
-        print(agent)
-        d_list = []
-        for i in range(n_runs):
-            print(i)
-            #run exp for this env/arg set
-            env = gym.make(env_name)
-            prev_obs, prev_info = env.reset()
-            #env.render(None)
-            args.update(n_objs=env.n_candidates)
-            inferself = InferSelf(env=env,args=args)
-            t = 0
-            while True:
-                action = inferself.get_action(env.semantic_state)
-                #print('Action:', env.unwrapped.get_action_name(action))
-                obs, rew, done, info = env.step(action)
-                #env.render(None)
-                theory, proba = inferself.update_theory(prev_info['semantic_state'], info['semantic_state'], action)
-                
-                change=False
-                if t>0:
-                    if curr_true_agent != env.unwrapped.agent_id:
-                        change = True
-                curr_true_agent = env.unwrapped.agent_id
-
-                #obs contains object positions, goal pos, 
-                #true agent id, predicted agent, prob of true agent, prob of true mapping, prob of top theory
-                true_theory_prob = get_prob_of_true(inferself, env.unwrapped.agent_id, env.unwrapped.action_pos_dict)
-                d_list.append(dict(env=env_name, agent_type=agent, tpt=t, run=i,
-                     agent_change=change,
-                     success=info["success"],
-                     obj_pos=info['semantic_state']["objects"],
-                     map=info['semantic_state']["map"].flatten(),
-                     action=action,
-                     true_self=env.unwrapped.agent_id,
-                     all_self_probas=inferself.history_agent_probas[-1],
-                     true_mapping=env.unwrapped.action_pos_dict,
-                     all_mapping_probas=inferself.get_mapping_probas(),
-                     true_theory_probas = true_theory_prob, 
-                     top_theory = theory,
-                     top_theory_proba = proba)) #which theory is correct? get prob of that theory
-                prev_obs = obs.copy()
-                prev_info = deepcopy(info)
-                t = t+1
-                if done or t>300:
-                    break
-        with open('output/out.csv', 'a') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=d_list[0].keys())
-            writer.writerows(d_list)
-    
