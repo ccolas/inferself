@@ -270,7 +270,8 @@ class GridworldEnv(gym.Env):
         next_agent_pos = current_agent_pos +  action_dir
         if self.is_empty(next_agent_pos, agent=True):
             new_candidates_pos[self.agent_id] = next_agent_pos
-            if np.all(next_agent_pos == self.goal_pos) and not self.no_goal:
+            if np.all(next_agent_pos == self.goal_pos) and not self.no_goal and (not self.oneswitch or self.step_counter > 30):
+                # there is a goal if not no_goal and in the case of oneswitch, if step_counter is after the switch
                 info['success'] = True
             # update position of the agent in the current map
             self.current_grid_map[current_agent_pos[0], current_agent_pos[1]] = 0
