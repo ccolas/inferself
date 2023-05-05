@@ -12,8 +12,8 @@ import numpy as np
 ENV = 'changeAgent-shuffle-noisy-v0'
 temp_noise = np.array([10, 10, 10, 5, 3, 1, 0.5, 0.1, 0.05, 0.01, 0.01])
 noise_values = np.array([0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])  #11
-# temp_noise = np.array([1, 1, 1.])
-# noise_values = np.array([0, 0.05, 0.1])
+temp_noise = np.array([1, 1, 1., 1, 1])
+noise_values = np.array([0, 0.05, 0.1, 0.15, 0.2])
 temp_noise /= sum(temp_noise)
 ARGS = dict(n_objs=4,
             biased_input_mapping=False,

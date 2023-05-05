@@ -74,7 +74,7 @@ class InferSelf:
         self.theories = np.array(self.theories)
         self.probas = np.ones(self.n_theories) / self.n_theories  # uniform probability distribution over theories
         if self.args['biased_input_mapping']:
-            self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 1000
+            self.probas[np.arange(0, self.n_theories, self.n_theories // 4)] *= 50
             self.probas /= self.probas.sum()
 
 
@@ -344,7 +344,12 @@ class InferSelf:
             else:
                 mode = 1
 
-        good_actions_explore, action_explore = self.explore(obs)
+        if self.args['explore_randomly']:
+            good_actions_explore = [0, 1, 2, 3]
+            action_explore = np.random.choice(good_actions_explore)
+        else:
+            good_actions_explore, action_explore = self.explore(obs)
+
         if not self.args['explore_only']:
             good_actions_exploit, action_exploit = self.exploit(obs)
         else:
