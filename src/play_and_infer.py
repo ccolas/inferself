@@ -5,11 +5,11 @@ import gym
 import gym_gridworld
 from inferself import InferSelf
 import numpy as np
-
+import time
 #TODO:
 #infer distrib over p_change?
 
-ENV = 'changeAgent-shuffle-noisy-v0'
+ENV = 'changeAgent-shuffle-noisy-oneswitch-v0'
 # temp_noise = np.array([10, 10, 10, 5, 3, 1, 0.5, 0.1, 0.05, 0.01, 0.01])
 # noise_values = np.array([0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])  #11
 temp_noise = np.array([1, 1, 1., 1, 1])
@@ -21,7 +21,7 @@ ARGS = dict(n_objs=4,
             simulation='sampling',  # exhaustive or sampling
             n_simulations=10,  # number of simulations if sampling
             infer_mapping=True,
-            threshold=0.9, # confidence threshold for agent id
+            threshold=0.6, # confidence threshold for agent id
             noise_prior_beta=[1, 15],
             noise_prior_discrete=temp_noise, #np.full(21, 1/21),
             noise_values_discrete= noise_values,
@@ -31,8 +31,8 @@ ARGS = dict(n_objs=4,
             print_status=True,
             hierarchical=True,
             p_change=0.1,
-            explore_only=True,  # if true, the agent only explores and the goal is removed from the env
-            explore_randomly=True
+            explore_only=False,  # if true, the agent only explores and the goal is removed from the env
+            explore_randomly=False
             )
 
 def play_and_infer(env=ENV):
