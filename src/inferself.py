@@ -118,8 +118,8 @@ class InferSelf:
         self.consistency_record = new_consistency_record
 
 
-        for n, theory in zip(new_noise_params, self.theories):
-            print(self.get_noise_mean(theory))
+        # for n, theory in zip(new_noise_params, self.theories):
+        #     print(self.get_noise_mean(theory))
 
         self.update_history_agent_probas()  # keep track of probabilities for each agent
         best_theory_id = np.argmax(self.probas)
@@ -169,7 +169,7 @@ class InferSelf:
         print("top theories:")
         for _ in range(min(len(probs),5)):
             id = np.argmax(probs)
-            print("agent id: ", theories[id]['agent_id'], ", prob: ", probs[id])
+            print("agent id: ", theories[id]['agent_id'], ", prob: ", probs[id], 'p_change:', theories[id]['p_change'])
             probs[id] = 0
 
     def is_agent_mvt_consistent(self, theory, prev_obs, new_obs, action):
@@ -234,12 +234,12 @@ class InferSelf:
 
         #update noise assuming no change
         for i_theory, theory in enumerate(self.theories):
-            obs_consistent =  self.consistency_record[i_theory] + [int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))]
+            obs_consistent = self.consistency_record[i_theory] + [int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))]
             new_consistency_record.append(obs_consistent)
             #this automatically takes into account possibility of change or no change
             #hchange_no_change_distribdistribow would we update the distrib if we knew there was no change at the last tpt?
             #i think rAlpha will be the same as rGamma for last tpt
-            Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(np.array(obs_consistent)+1, theory['p_change'],  self.args['noise_values_discrete'],
+            Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(np.array(obs_consistent)+1, self.args['p_change'],  self.args['noise_values_discrete'],
                                                                                           self.args['noise_prior_discrete'], 'Backward')
             theory['p_change'] = JumpPost[-1]
             print(f'New pc = {JumpPost[-1]}')

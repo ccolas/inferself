@@ -20,7 +20,7 @@ COLORS = {0: [0.0, 0.0, 0.0], 1: [0.5, 0.5, 0.5],
 class GridworldEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, game_type, noise=0, no_goal=True, shuffle_keys=False, change_agent_every=15):
+    def __init__(self, game_type, noise=0, no_goal=False, shuffle_keys=False, change_agent_every=15):
         assert game_type in ['logic', 'logic_extended', 'logic_extended_h',
                              'contingency', 'contingency_extended',
                              'change_agent', 'change_agent_extended', 'change_agent_extended_1', 'change_agent_extended_2']
