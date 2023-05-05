@@ -54,10 +54,53 @@ register(id='contingency-shuffle-noisy-v0',
                      shuffle_keys=True,
                      noise=0.1))
 
-register(id='changeAgent-shuffle-noisy-v0',
+register(id='changeAgent-shuffle-noisy-5-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='change_agent',
                      shuffle_keys=True,
+                     change_agent_every=5,
+                     noise=0.1))
+
+register(id='changeAgent-shuffle-noisy-7-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     shuffle_keys=True,
+                     change_agent_every=7,
+                     noise=0.1))
+
+register(id='changeAgent-shuffle-noisy-10-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     shuffle_keys=True,
+                     change_agent_every=10,
+                     noise=0.1))
+
+register(id='changeAgent-shuffle-noisy-15-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     shuffle_keys=True,
+                     change_agent_every=15,
+                     noise=0.1))
+
+register(id='changeAgent-shuffle-noisy-20-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     shuffle_keys=True,
+                     change_agent_every=20,
+                     noise=0.1))
+
+register(id='changeAgent-shuffle-noisy-30-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     shuffle_keys=True,
+                     change_agent_every=30,
+                     noise=0.1))
+
+register(id='changeAgent-shuffle-noisy-oneswitch-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     shuffle_keys=True,
+                     oneswitch=True,
                      noise=0.1))
 
 # register(id='logicExtended-v0',

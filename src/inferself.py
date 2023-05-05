@@ -242,7 +242,7 @@ class InferSelf:
             Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(np.array(obs_consistent)+1, self.args['p_change'],  self.args['noise_values_discrete'],
                                                                                           self.args['noise_prior_discrete'], 'Backward')
             theory['p_change'] = JumpPost[-1]
-            print(f'New pc = {JumpPost[-1]}')
+            # print(f'New pc = {JumpPost[-1]}')
             #last col of alpha is nans after first run
             no_change_distrib = Alpha[:,0,-1]
             if no_change_distrib.sum() > 0:
