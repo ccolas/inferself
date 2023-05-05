@@ -8,7 +8,8 @@ import gym_gridworld
 from scipy.stats import beta
 import matplotlib.pyplot as plt
 from hierarchical_scratch import ForwardBackward_BernoulliJump
-
+from multiprocessing import Pool
+import time
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
 class InferSelf:
@@ -31,6 +32,7 @@ class InferSelf:
         self.reset_theories()
         self.fig = None
         self.p_change = args['p_change']
+        self.pool = Pool(10)
 
     def reset_theories(self):
         self.time_since_last_reset = 0
@@ -149,9 +151,7 @@ class InferSelf:
         probas = [0 for _ in range(self.n_objs)]
         for theory, proba in zip(self.theories, self.probas):
             probas[theory['agent_id']] += proba
-        if np.sum(probas) - 1 > 1e-5:
-            stop = 1
-        # assert (np.sum(probas) - 1) < 1e-5
+        assert (np.sum(probas) - 1) < 1e-5
         self.history_agent_probas.append(probas)
 
     def get_mapping_probas(self):
@@ -191,6 +191,7 @@ class InferSelf:
         # update parameters of the noise distribution for the current theory by incrementing alpha if observation is not consistent
         if self.args['hierarchical']:
             return self.compute_posteriors_hierarchical(prev_obs, new_obs, probas, action, compute_new_noise)
+
         new_betas = []
         new_consistency_record = []
         if compute_new_noise:
@@ -198,6 +199,7 @@ class InferSelf:
                 decays = [1]*len(self.consistency_record[0])
             else:
                 decays = [math.e**(-k/self.args['forget_param']) for k in range(len(self.consistency_record[0])+1, 1, -1)]
+
             for i_theory, theory in enumerate(self.theories):
                 #now we are tracking consistent and inconsistent obs for each theory
                 obs_consistent =  self.consistency_record[i_theory] + [int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))]
@@ -258,10 +260,6 @@ class InferSelf:
             if change_distrib.sum() > 0:
                 change_distrib = change_distrib/change_distrib.sum()
             change_new_noise.append(change_distrib)
-            #for last tpt
-            # print(rGamma[:,-1])
-            # print(Alpha[:,0,-1])
-
             new_noise.append(rGamma[:,-1])
 
         #now compute probas of theories
@@ -392,18 +390,31 @@ class InferSelf:
         action_scores = []
         for action in range(4):
             # simulate possible observations given this theory and action
+            # t_init = time.time()
             weighted_obs = self.simulate(prev_obs, action, self.theories, self.probas)
+            # print(time.time() - t_init)
             # information gain for each possible observation, weighted by probability
             assert (np.isclose(sum(weighted_obs.values()), 1))
-            exp_info_gain = 0
-            for obs_str, obs_prob in weighted_obs.items():
-                poss_obs = s2dict(obs_str)
-                new_probas, _ = self.compute_posteriors(prev_obs, poss_obs, self.probas, action)
-                info_gain = self.information_gain(self.probas, new_probas)
-                exp_info_gain += info_gain * obs_prob
+            # t_init = time.time()
+            inputs = [(k, v, prev_obs, action, self.probas.copy()) for k, v in weighted_obs.items()]
+            #TODO find a way to parallelize this
+            # pool = Pool(10)
+            # info_gains = pool.map(self.estimate_posteriors, inputs)
+            # exp_info_gain = np.sum(info_gains)
+            info_gains = [self.estimate_posteriors(input) for input in inputs]
+            exp_info_gain = np.sum(info_gains)
+
+            # print(time.time() - t_init)
             action_scores.append(exp_info_gain)
         max_score = np.max(action_scores)
         return np.argwhere(action_scores == max_score).flatten(), np.argmax(action_scores)
+
+    def estimate_posteriors(self, inputs):
+        obs_str, obs_prob, prev_obs, action, probas = inputs
+        poss_obs = s2dict(obs_str)
+        new_probas, _ = self.compute_posteriors(prev_obs, poss_obs, probas, action)
+        info_gain = information_gain(probas, new_probas)
+        return info_gain * obs_prob
 
     def explore_multiple(self, prev_obs, n=2, sampling=True):
         # compute expected information gian for n>1 step action sequences
@@ -447,11 +458,6 @@ class InferSelf:
         good_actions = [eval(x)[0] for x in good_seqs]
         return good_actions, good_actions[0]
 
-    def information_gain(self, p0, p1):
-        # errors in js distance with very small numbers
-        p0 = [round(x,10) for x in p0]
-        p1 = [round(x,10) for x in p1]
-        return scipy.spatial.distance.jensenshannon(p0, p1)
 
     def get_next_positions(self, obs, movements, agent_id):
         # given each object's intended movement, return object next positions and new map
@@ -638,6 +644,12 @@ def l2s(l):
 
 def s2l(s):
     return [int(ss) for ss in s.split('_')]
+
+def information_gain(p0, p1):
+    # errors in js distance with very small numbers
+    p0 = [round(x,10) for x in p0]
+    p1 = [round(x,10) for x in p1]
+    return scipy.spatial.distance.jensenshannon(p0, p1)
 
 if __name__ == '__main__':
     inferself = InferSelf()
