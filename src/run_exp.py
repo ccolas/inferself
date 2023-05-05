@@ -17,6 +17,12 @@ import numpy as np
 n_runs = 10
 env_list = ['logic-v0', 'contingency-v0', 'changeAgent-v0', 'logic-shuffle-v0', 'contingency-shuffle-v0', 'changeAgent-shuffle-v0', 'logic-noisy-v0', 'contingency-noisy-v0', 'changeAgent-noisy-v0', 'logic-shuffle-noisy-v0', 'changeAgent-shuffle-noisy-v0', 'contingency-shuffle-noisy-v0']
 
+
+discrete_noise_prior = np.array([10, 10, 10, 5, 3, 1, 0.5, 0.1, 0.05, 0.01, 0.01])
+discrete_noise_prior/sum(discrete_noise_prior)
+discrete_noise_values = np.array([0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])
+
+
 args1 = dict(n_objs=4,
             biased_input_mapping=False,
             bias_bot_mvt='uniform', # static or uniform
@@ -25,8 +31,8 @@ args1 = dict(n_objs=4,
             infer_mapping=True,
             threshold=0.9, # confidence threshold for agent id
             noise_prior_beta=[1, 15],
-            noise_prior_discrete=np.full((21,), 1/21),
-            noise_values_discrete= np.arange(21)/20,
+            noise_prior_discrete=discrete_noise_prior,
+            noise_values_discrete= discrete_noise_values,
             forget_param=None, #the smaller this is, the more forgetful we are when computing noise
             likelihood_weight=1,
             explicit_resetting=False,
@@ -42,8 +48,8 @@ args2 = dict(n_objs=4,
             infer_mapping=True,
             threshold=0.9, # confidence threshold for agent id
             noise_prior_beta=[1, 15],
-            noise_prior_discrete=np.full((21,), 1/21),
-            noise_values_discrete= np.arange(21)/20,
+            noise_prior_discrete=discrete_noise_prior,
+            noise_values_discrete= discrete_noise_values,
             forget_param=None, #the smaller this is, the more forgetful we are when computing noise
             likelihood_weight=1,
             explicit_resetting=True,
@@ -60,8 +66,8 @@ args3 = dict(n_objs=4,
             infer_mapping=True,
             threshold=0.9, # confidence threshold for agent id
             noise_prior_beta=[1, 15],
-            noise_prior_discrete=np.full((21,), 1/21),
-            noise_values_discrete= np.arange(21)/20,
+            noise_prior_discrete=discrete_noise_prior,
+            noise_values_discrete= discrete_noise_values,
             forget_param=None, #the smaller this is, the more forgetful we are when computing noise
             likelihood_weight=2,
             explicit_resetting=False,
@@ -78,8 +84,8 @@ args4 = dict(n_objs=4,
             infer_mapping=True,
             threshold=0.9, # confidence threshold for agent id
             noise_prior_beta=[1, 15],
-            noise_prior_discrete=np.full((21,), 1/21),
-            noise_values_discrete= np.arange(21)/20,
+            noise_prior_discrete=discrete_noise_prior,
+            noise_values_discrete= discrete_noise_values,
             forget_param=5, #the smaller this is, the more forgetful we are when computing noise
             likelihood_weight=2,
             explicit_resetting=False,
@@ -88,8 +94,26 @@ args4 = dict(n_objs=4,
             p_change=0.1
             )
 
+args4 = dict(n_objs=4,
+            biased_input_mapping=False,
+            bias_bot_mvt='uniform', # static or uniform
+            simulation='sampling',  # exhaustive or sampling
+            n_simulations=50,  # number of simulations if sampling
+            infer_mapping=True,
+            threshold=0.9, # confidence threshold for agent id
+            noise_prior_beta=[1, 15],
+            noise_prior_discrete=discrete_noise_prior,
+            noise_values_discrete= discrete_noise_values,
+            forget_param=None, #the smaller this is, the more forgetful we are when computing noise
+            likelihood_weight=1,
+            explicit_resetting=False,
+            print_status=False,
+            hierarchical=True,
+            p_change=0.1
+            )
 
-agent_dict= dict(base=args1, explicit_resetter=args2, current_focused=args3, current_focused_forgetter=args4)
+
+agent_dict= dict(base=args1, explicit_resetter=args2, current_focused=args3, current_focused_forgetter=args4,hierarchical=args5)
 
 
 
@@ -105,7 +129,10 @@ def get_prob_of_true(s, true_agent,true_mapping):
             return s.probas[i_theory]
 
 
-with open('output/out2.csv', 'w') as csvfile:
+
+
+if __name__ == '__main__':
+    with open('output/out2.csv', 'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=['env', 'agent_type', 'tpt', 'run', 'success', 'obj_pos', 'map', 'action', 'true_self', 'all_self_probas', 'true_mapping', 'all_mapping_probas', 'true_theory_probas', 'top_theory', 'top_theory_proba'])
             writer.writeheader()
 
@@ -160,7 +187,4 @@ for env_name in env_list:
         with open('output/out.csv', 'a') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=d_list[0].keys())
             writer.writerows(d_list)
-
-
-#if __name__ == '__main__':
     
