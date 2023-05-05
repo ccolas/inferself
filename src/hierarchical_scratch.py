@@ -152,7 +152,7 @@ def ForwardBackward_BernoulliJump(obs, pJ, pgrid, Alpha0, Pass='Forward'):
 
         # Shift Beta so that Beta[:,:,t] is the posterior given s(t+1:N)
         newBeta = np.zeros_like(Beta)
-        # # newBeta[:, :, 0] = 1 / (n * n)  # TODO: what is this?
+        # newBeta[:, :, 0] = 1 / (n_noise * n_noise)  # TODO: what is this?
         newBeta[:, :, 0] = 1 / (2 * n_noise)
         newBeta[:, :, 1:] = Beta[:, :, :-1]
         Beta = newBeta.copy()
@@ -183,6 +183,8 @@ def ForwardBackward_BernoulliJump(obs, pJ, pgrid, Alpha0, Pass='Forward'):
         GammaJ0 = GammaJ0 / cst
 
         JumpPost = np.sum(GammaJ, axis=0)
+        NoJumpPost = np.sum(GammaJ0, axis=0)
+        JumpPost /= (JumpPost + NoJumpPost)
         if np.any(JumpPost > 1):
             print('JumpPost problem')
         # JumpPost = [0.1]
@@ -199,21 +201,20 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     probabilities = []
     outcomes = []
-    p_change = 0.1
-    p = np.random.uniform(0, 1)
+    p_change = 0.01
+    p = 0.1# np.random.uniform(0, 1)
     for j in range(100):
         change = np.random.rand() < p_change
-        # change=j==50
+        change=j==50
         if change:
-            p = np.random.uniform(0, 1)
+            p = 0.9# np.random.uniform(0, 1)
         probabilities.append(p)
         outcomes.append(np.random.rand() > p)
     outcomes = np.array(outcomes) + 1
     pgrid = np.linspace(0, 1, 20)
     Alpha0 = np.ones(pgrid.size) / pgrid.size
-    pJ = 0.05
     # ForwardBackward_BernoulliJump(s=[1], pJ=pJ, Alpha0=Alpha0, pgrid=pgrid, Pass='Backward')
-    Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(obs=outcomes, pJ=pJ, Alpha0=Alpha0, pgrid=pgrid, Pass='Backward')
+    Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(obs=outcomes, pJ=p_change, Alpha0=Alpha0, pgrid=pgrid, Pass='Backward')
     predicted_probas = pgrid @ rGamma
     plt.figure()
     plt.plot(probabilities, label='p')
