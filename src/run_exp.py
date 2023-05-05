@@ -94,7 +94,7 @@ args4 = dict(n_objs=4,
             p_change=0.1
             )
 
-args4 = dict(n_objs=4,
+args5 = dict(n_objs=4,
             biased_input_mapping=False,
             bias_bot_mvt='uniform', # static or uniform
             simulation='sampling',  # exhaustive or sampling
