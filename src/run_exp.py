@@ -19,7 +19,7 @@ env_list = ['logic-v0', 'contingency-v0', 'changeAgent-v0', 'logic-shuffle-v0', 
 
 
 discrete_noise_prior = np.array([10, 10, 10, 5, 3, 1, 0.5, 0.1, 0.05, 0.01, 0.01])
-discrete_noise_prior/sum(discrete_noise_prior)
+discrete_noise_prior = discrete_noise_prior/sum(discrete_noise_prior)
 discrete_noise_values = np.array([0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])
 
 
