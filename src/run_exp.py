@@ -19,7 +19,7 @@ temp_noise = np.array([1, 1, 1., 1, 1])
 discrete_noise_values = np.array([0, 0.05, 0.1, 0.15, 0.2])
 proba_discrete_noise = temp_noise / sum(temp_noise)
 
-expe_name = 'one_switch'
+expe_name = 'switch_frequency'
 
 if expe_name == 'with_agent_change':
     env_list = ['changeAgent-v0', 'changeAgent-noisy-v0', 'changeAgent-shuffle-noisy-v0']
@@ -34,8 +34,8 @@ elif expe_name == 'one_switch':
     variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
 elif expe_name == 'switch_frequency':
     # expe switch frequency
-    env_list = ['changeAgent-shuffle-noisy-5-v0', 'changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0',
-                'changeAgent-shuffle-noisy-20-v0', 'changeAgent-shuffle-noisy-30-v0']
+    env_list = ['changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0',
+                'changeAgent-shuffle-noisy-20-v0']
     variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
 else:
     raise NotImplementedError
@@ -112,7 +112,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
         if 'oneswitch' in env_name:
             if t < 30:
                 mode = 1
-        action = inferself.get_action(prev_info['semantic_state'], mode=mode)
+        action = inferself.get_action(prev_info['semantic_state'], enforce_mode=mode)
         obs, rew, done, info = env.step(action)
         theory, proba = inferself.update_theory(prev_info['semantic_state'], info['semantic_state'], action)
 
