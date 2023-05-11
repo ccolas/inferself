@@ -20,7 +20,7 @@ COLORS = {0: [0.0, 0.0, 0.0], 1: [0.5, 0.5, 0.5],
 class GridworldEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, game_type, noise=0, no_goal=False, shuffle_keys=False, change_agent_every=15, oneswitch=False):
+    def __init__(self, game_type, noise=0, no_goal=False, shuffle_keys=False, change_agent_every=10, oneswitch=False):
         assert game_type in ['logic', 'logic_extended', 'logic_extended_h',
                              'contingency', 'contingency_extended',
                              'change_agent', 'change_agent_extended', 'change_agent_extended_1', 'change_agent_extended_2']
@@ -167,11 +167,9 @@ class GridworldEnv(gym.Env):
         else:
             action_dir = self.action_pos_dict[action]
         next_agent_pos = self.candidates_pos[self.agent_id] + action_dir
-        if not self.no_goal:
-            stop = 1
         if self.is_empty(next_agent_pos, agent=True):
             new_candidates_pos[self.agent_id] = next_agent_pos
-            if np.all(next_agent_pos == self.goal_pos):
+            if np.all(next_agent_pos == self.goal_pos) and not self.no_goal:
                 info['success'] = True
         else:
             new_candidates_pos[self.agent_id] = self.candidates_pos[self.agent_id]
@@ -213,7 +211,7 @@ class GridworldEnv(gym.Env):
         next_agent_pos = current_agent_pos + action_dir
         if self.is_empty(next_agent_pos, agent=True):
             new_candidates_pos[self.agent_id] = next_agent_pos
-            if np.all(next_agent_pos == self.goal_pos):
+            if np.all(next_agent_pos == self.goal_pos) and not self.no_goal:
                 info['success'] = True
             # update position of the agent in the current map
             self.current_grid_map[current_agent_pos[0], current_agent_pos[1]] = 0
@@ -245,11 +243,11 @@ class GridworldEnv(gym.Env):
         if self.oneswitch:
             if self.step_counter == 30:
                 self.agent_id = np.random.choice([i for i in range(len(self.candidates_pos)) if i != self.agent_id])
-                print(f'AGENT CHANGES OMGGG: {self.agent_id}')
+                # print(f'AGENT CHANGES OMGGG: {self.agent_id}')
         else:
             if self.step_counter % self.change_agent_every == 0:
                 self.agent_id = np.random.choice([i for i in range(len(self.candidates_pos)) if i != self.agent_id])
-                print(f'AGENT CHANGES OMGGG: {self.agent_id}')
+                # print(f'AGENT CHANGES OMGGG: {self.agent_id}')
 
         action = int(action)
         info = dict(success=False)

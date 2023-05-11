@@ -13,29 +13,40 @@ import numpy as np
 # random exploration as one version
 
 
-n_runs = 5
+n_runs = 50
 
 temp_noise = np.array([1, 1, 1., 1, 1])
 discrete_noise_values = np.array([0, 0.05, 0.1, 0.15, 0.2])
 proba_discrete_noise = temp_noise / sum(temp_noise)
 
-expe_name = 'switch_frequency'
+expe_name = 'with_agent_change'
 
 if expe_name == 'with_agent_change':
-    env_list = ['changeAgent-v0', 'changeAgent-noisy-v0', 'changeAgent-shuffle-noisy-v0']
-    variants = ['base', 'random_explo', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-elif expe_name == 'without_agent_change':
-    env_list = ['logic-v0', 'logic-noisy-v0', 'logic-shuffle-v0', 'logic-shuffle-noisy-v0',
-                'contingency-v0', 'contingency-noisy-v0', 'contingency-shuffle-v0', 'contingency-shuffle-noisy-v0',]
-    variants = ['base', 'no_infer_mapping', 'biased_action_mapping', 'random_explo']
-elif expe_name == 'one_switch':
-    print("don't forget to cancel the goal!")
-    env_list = ['changeAgent-shuffle-noisy-oneswitch-v0']
+    explore_exploit = [True]
+    env_list = ['changeAgent-noisy-v0', 'changeAgent-shuffle-noisy-10-v0']
     variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
+# elif expe_name == 'without_agent_change':
+#     env_list = ['logic-v0', 'logic-noisy-v0', 'logic-shuffle-v0', 'logic-shuffle-noisy-v0',
+#                 'contingency-v0', 'contingency-noisy-v0', 'contingency-shuffle-v0', 'contingency-shuffle-noisy-v0',]
+#     variants = ['base']#, 'no_infer_mapping', 'biased_action_mapping', 'random_explo']
+# elif expe_name == 'one_switch':
+#     assert False
+#     print("don't forget to cancel the goal!")
+#     env_list = ['changeAgent-shuffle-noisy-oneswitch-v0']
+#     variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
+elif expe_name == 'no_infer_mapping':
+    explore_exploit = [True]
+    env_list = ['logic-noisy-v0', 'contingency-noisy-v0']
+    variants = ['no_infer_mapping']
+elif expe_name == 'base':
+    explore_exploit = [True]
+    env_list = ['logic-shuffle-noisy-v0', 'contingency-shuffle-noisy-v0']
+    variants = ['base']
 elif expe_name == 'switch_frequency':
     # expe switch frequency
-    env_list = ['changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0',
-                'changeAgent-shuffle-noisy-20-v0']
+    explore_exploit = [True, False]
+    env_list = ['changeAgent-noisy-7-v0', 'changeAgent-noisy-10-v0', 'changeAgent-noisy-15-v0',
+                'changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0']
     variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
 else:
     raise NotImplementedError
@@ -107,7 +118,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     inferself = InferSelf(env=env, args=args)
     previous_agent = None
     for t in range(time_limit):
-        print(t)
+        # print(t)
         mode=None
         if 'oneswitch' in env_name:
             if t < 30:
@@ -137,7 +148,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
                         true_mapping=env.unwrapped.action_pos_dict,
                         all_mapping_probas=inferself.get_mapping_probas(),
                         true_theory_probas=true_theory_prob,
-                        agent_found=true_theory_prob > 0.9,
+                        agent_found=true_theory_prob > 0.7,
                         true_theory_noise_mean=noise_mean,
                         top_theory=theory,
                         top_theory_proba=proba)  # which theory is correct? get prob of that theory
@@ -149,8 +160,9 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     return data
 
 
-def run_experiment(exp_name, envs, agents, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/", overwrite=False, time_limit=60):
-    data_path = save_dir + exp_name + '.pkl'
+def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/", overwrite=False,
+                   time_limit=60):
+    data_path = save_dir + 'data.pkl'
     print(f'Running experiment {exp_name}, saving to {data_path}')
 
     keys = ['tpt', 'success', 'obj_pos', 'map', 'action', 'true_self', 'all_self_probas', 'true_mapping', 'all_mapping_probas', 'agent_found',
@@ -163,28 +175,25 @@ def run_experiment(exp_name, envs, agents, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c
         if os.path.exists(data_path):
             with open(data_path, 'rb') as f:
                 data = pickle.load(f)
-
+    if expe_name not in data.keys():
+        data[expe_name] = dict()
     # loop over environments, agents and seeds
-    for explore_only in [True, False]:
+    for explore_only in explore_exploit:
         for i_env, env_name in enumerate(envs):
             env_name_dict = env_name + '_' + str(explore_only)
-            if env_name_dict not in data.keys(): data[env_name_dict] = dict()
+            if env_name_dict not in data[expe_name].keys(): data[expe_name][env_name_dict] = dict()
             print(f"  Env: {env_name_dict} ({i_env + 1} / {len(envs)})")
             for i_agent, agent in enumerate(agents):
-                if (agent == 'biased_action_mapping' and 'shuffle' in env_name) or (agent=='no_infer_mapping' and 'shuffle' in env_name) or \
-                        (agent in ['explicit_resetter', 'current_focused', 'current_focused_forgetter', 'hierarchical'] and 'changeAgent' not in env_name) or \
-                    (agent == 'random_explo' and 'shuffle-noisy' not in env_name):
-                    continue
                 print(f"    Agent: {agent} ({i_agent + 1} / {len(agents)})")
-                if agent not in data[env_name_dict].keys(): data[env_name_dict][agent] = dict()
+                if agent not in data[expe_name][env_name_dict].keys(): data[expe_name][env_name_dict][agent] = dict()
                 for i in range(n_runs):
                     print(f'      Seed {i + 1} / {n_runs}')
-                    if str(i) not in data[env_name_dict][agent].keys():
-                        data[env_name_dict][agent][str(i)] = run_agent_in_env(env_name, agent, explore_only, keys, time_limit)
+                    if str(i) not in data[expe_name][env_name_dict][agent].keys():
+                        data[expe_name][env_name_dict][agent][str(i)] = run_agent_in_env(env_name, agent, explore_only, keys, time_limit)
                         with open(data_path, 'wb') as f:
                             pickle.dump(data, f)
 
 
 if __name__ == '__main__':
-    run_experiment(exp_name=expe_name, envs=env_list, agents=variants)
+    run_experiment(exp_name=expe_name, envs=env_list, agents=variants, explore_exploit=explore_exploit)
 

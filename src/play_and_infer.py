@@ -9,7 +9,7 @@ import time
 #TODO:
 #infer distrib over p_change?
 
-ENV = 'changeAgent-shuffle-noisy-oneswitch-v0'
+ENV = 'changeAgent-shuffle-noisy-7-v0'
 # temp_noise = np.array([10, 10, 10, 5, 3, 1, 0.5, 0.1, 0.05, 0.01, 0.01])
 # noise_values = np.array([0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5])  #11
 temp_noise = np.array([1, 1, 1., 1, 1])
