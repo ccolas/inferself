@@ -44,6 +44,12 @@ elif expe_name == 'base':
     variants = ['base']
 elif expe_name == 'switch_frequency':
     # expe switch frequency
+    explore_exploit = [True, False]
+    env_list = ['changeAgent-noisy-7-v0', 'changeAgent-noisy-10-v0', 'changeAgent-noisy-15-v0',
+                'changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0']
+    variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
+elif expe_name == 'switch_frequency_false':
+    # expe switch frequency
     explore_exploit = [False]
     env_list = ['changeAgent-noisy-7-v0', 'changeAgent-noisy-10-v0', 'changeAgent-noisy-15-v0',
                 'changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0']
@@ -112,7 +118,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     env = gym.make(env_name)
     data = dict(zip(keys, [[] for _ in range(len(keys))]))
     if args['explore_only']:
-        env.no_goal = True
+        env.unwrapped.no_goal = True
     prev_obs, prev_info = env.reset()
     args.update(n_objs=env.n_candidates)
     inferself = InferSelf(env=env, args=args)
