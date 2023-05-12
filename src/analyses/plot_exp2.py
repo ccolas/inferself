@@ -11,10 +11,11 @@ plot_dir = "../../data/plots/"
 # compile all data
 all_data = dict()
 for expe_name in os.listdir(save_dir):
-    data_path = save_dir + expe_name
-    with open(data_path, 'rb') as f:
-        data = pickle.load(f)
-    all_data.update(data)
+    if 'all_data' not in expe_name:
+        data_path = save_dir + expe_name
+        with open(data_path, 'rb') as f:
+            data = pickle.load(f)
+        all_data.update(data)
 
 with open(save_dir + 'all_data.pkl', 'wb') as f:
     pickle.dump(all_data, f)
@@ -45,15 +46,43 @@ def plot_histograms(data, n_detected, alg_names, save_path, ylabel=None, alpha=0
     plt.savefig(save_path)
     plt.close('all')
 
+def plot_best_theory(data, names, save_path):
+    for d, name in zip(data, names):
+        changes = np.argwhere(np.array(d['changes'])).flatten()
+        fig, axs = plt.subplots(figsize=(10, 7))
+        for c in changes:
+            plt.axvline(c, ymin=0, ymax=1, color='k')
+        plt.plot(np.array(d['true_theory_probas']), alpha=0.4)
+        plt.plot(np.array(d['true_theory_probas']).mean(axis=0), linewidth=3, label='mean')
+        plt.legend()
+        plt.xlabel('steps')
+        plt.ylabel('prob best theory')
+        plt.savefig(save_path + f'{name}_proba_best.pkl')
+        plt.close('all')
+    changes = np.argwhere(np.array(data[0]['changes'])).flatten()
+    fig, axs = plt.subplots(figsize=(10, 7))
+    for c in changes:
+        plt.axvline(c, ymin=0, ymax=1, color='k')
+    for i, d, name in zip(range(len(data)), data, names):
+        plt.plot(np.array(d['true_theory_probas']), alpha=0.4, color=COLORS[i])
+        plt.plot(np.array(d['true_theory_probas']).mean(axis=0), linewidth=3, label=name,  color=COLORS[i])
+    plt.legend()
+    plt.xlabel('steps')
+    plt.ylabel('prob best theory')
+    plt.savefig(save_path + f'all_proba_best.pkl')
+    plt.close('all')
+
 def get_data_from_agent_and_env(data):
     results = dict(success=[], infer05=[], infer07=[], infer09=[],
                    frac_infer05=[], frac_infer07=[], frac_infer09=[],
-                   detected_success=0, detected_infer05=0, detected_infer07=0, detected_infer09=0)
+                   detected_success=0, detected_infer05=0, detected_infer07=0, detected_infer09=0,
+                   true_theory_probas=[])
     n_detected = []
     count = 0
     for i in data.keys():
         n_detected.append(0)
         changes = [0] + list(np.argwhere(np.array(data[str(i)]['agent_change'])).flatten()) + [max_steps]
+        results['changes'] = np.array(data[str(i)]['agent_change'])
         for start, end in zip(changes[:-1], changes[1:]):
             count  += 1
             to_track = np.array(data[str(i)]['success'])[start: end]
@@ -79,6 +108,7 @@ def get_data_from_agent_and_env(data):
                 results['infer09'].append(indexes[0] + 1)
                 results['frac_infer09'].append(to_track.sum() / len(to_track))
                 results['detected_infer09'] += 1
+        results['true_theory_probas'].append(np.array(data[str(i)]['true_theory_probas']))
     for key in ['detected_infer05', 'detected_infer07', 'detected_infer09']:
         results[key] /= count
     return results
@@ -104,6 +134,7 @@ for to_plot in ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07',
     else:
         n_detected = [d['detected_' + to_plot] for d in env_data]
     plot_histograms(data, n_detected, envs, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.4, n_bins=10)
+    plot_best_theory(env_data, envs, save_path)
 
 # no mapping inference, logic and contingency + noise
 agent = 'base'
