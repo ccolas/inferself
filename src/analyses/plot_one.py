@@ -9,6 +9,18 @@ COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e3
 save_dir = "/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/"
 plot_dir = "/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/plots/plot_all/"
 
+# compile all data
+all_data = dict()
+for expe_name in os.listdir(save_dir):
+    if 'all_data' not in expe_name:
+        data_path = save_dir + expe_name
+        with open(data_path, 'rb') as f:
+            data = pickle.load(f)
+        all_data.update(data)
+
+with open(save_dir + 'all_data.pkl', 'wb') as f:
+    pickle.dump(all_data, f)
+
 def plot_one(data, path):
     fig, ax = plt.subplots(figsize=(15, 7))
 
@@ -33,18 +45,13 @@ def plot_one(data, path):
     plt.savefig(path)
     plt.close('all')
 
-for expe_name in ['without_agent_change', 'with_agent_change', 'one_switch', 'switch_frequency']:
-    data_path = save_dir + expe_name + '.pkl'
-    with open(data_path, 'rb') as f:
-        all_data = pickle.load(f)
-    for env in all_data.keys():
-        os.makedirs(plot_dir + env + '/', exist_ok=True)
-        for agent in all_data[env].keys():
-            plot_path = plot_dir + env + '/' + agent + '/'
+for expe_name in all_data.keys():
+    for env in all_data[expe_name].keys():
+        for agent in all_data[expe_name][env].keys():
+            plot_path = plot_dir + expe_name + '/' + env + '/' + agent + '/'
+            print(plot_path)
             os.makedirs(plot_path, exist_ok=True)
-            for seed in all_data[env][agent].keys():
-                data = all_data[env][agent][seed]
+            for seed in all_data[expe_name][env][agent].keys():
+                data = all_data[expe_name][env][agent][seed]
                 filename = f'{env}__{agent}__{seed}.png'
                 plot_one(data, path=plot_path + filename)
-
-    stop = 1
