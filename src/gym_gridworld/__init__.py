@@ -88,6 +88,24 @@ register(id='changeAgent-shuffle-noisy-15-v0',
                      change_agent_every=15,
                      noise=0.1))
 
+register(id='changeAgent-7-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     change_agent_every=7,
+                     noise=0))
+
+register(id='changeAgent-10-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     change_agent_every=10,
+                     noise=0))
+
+register(id='changeAgent-15-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     change_agent_every=15,
+                     noise=0))
+
 register(id='changeAgent-noisy-7-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='change_agent',

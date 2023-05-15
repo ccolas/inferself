@@ -19,7 +19,7 @@ temp_noise = np.array([1, 1, 1., 1, 1])
 discrete_noise_values = np.array([0, 0.05, 0.1, 0.15, 0.2])
 proba_discrete_noise = temp_noise / sum(temp_noise)
 
-expe_name = 'base'
+expe_name = 'switch_frequency'
 
 if expe_name == 'with_agent_change':
     explore_exploit = [True]
@@ -44,16 +44,22 @@ elif expe_name == 'base':
     variants = ['base']
 elif expe_name == 'switch_frequency':
     # expe switch frequency
-    explore_exploit = [True, False]
+    explore_exploit = [True]
     env_list = ['changeAgent-noisy-7-v0', 'changeAgent-noisy-10-v0', 'changeAgent-noisy-15-v0',
                 'changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0']
     variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
 elif expe_name == 'switch_frequency_false':
     # expe switch frequency
     explore_exploit = [False]
-    env_list = ['changeAgent-noisy-7-v0', 'changeAgent-noisy-10-v0', 'changeAgent-noisy-15-v0',
+    env_list = ['changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0',
+                'changeAgent-noisy-7-v0', 'changeAgent-noisy-10-v0', 'changeAgent-noisy-15-v0',
                 'changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0']
     variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
+elif expe_name == 'switch_frequency_no_noise_false':
+    # expe switch frequency
+    explore_exploit = [False]
+    env_list = ['changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0']
+    variants = ['base_no_noise', 'explicit_resetter_no_noise', 'hierarchical_no_noise']
 else:
     raise NotImplementedError
 

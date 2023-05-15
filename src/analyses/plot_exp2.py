@@ -37,7 +37,7 @@ def plot_histograms(data, n_detected, alg_names, save_path, ylabel=None, alpha=0
     for i in range(len(data)):
         out = axs[0].hist(data[i], bins=bins, color=COLORS[i], alpha=alpha, label=alg_names[i], density=True)
         axs[0].axvline(np.mean(data[i]), ymin=0, ymax=out[1].max(), color=COLORS[i])
-        if n_detected and 'success' not in ylabel:
+        if n_detected:
             axs[1].bar([i * 1.2], [n_detected[i]], width=1, color=COLORS[i])
             axs[1].legend(alg_names)
             axs[1].set_ylabel(f'fraction {ylabel} detected')
@@ -45,9 +45,10 @@ def plot_histograms(data, n_detected, alg_names, save_path, ylabel=None, alpha=0
     if ylabel:
         if 'frac' in ylabel:
             axs[0].set_title(f'distribution of % steps {ylabel} detected')
+            axs[0].set_xlabel('% steps')
         else:
             axs[0].set_title(f'distribution of # steps before {ylabel}')
-        axs[0].set_xlabel('steps')
+            axs[0].set_xlabel('steps')
     axs[0].legend()
     plt.savefig(save_path)
     plt.close('all')
@@ -57,9 +58,13 @@ def plot_best_theory(data, names, save_path):
         changes = np.argwhere(np.array(d['changes'])).flatten()
         fig, axs = plt.subplots(figsize=(10, 7))
         for c in changes:
-            plt.axvline(c, ymin=0, ymax=1, color='k')
-        plt.plot(np.array(d['true_theory_probas']).T, alpha=0.25, color='k')
-        plt.plot(np.array(d['true_theory_probas']).mean(axis=0), linewidth=5, color='k', label='mean')
+            plt.axvline(c, ymin=0, ymax=1, linestyle='--', color='b')
+        a = np.zeros((len(d['true_theory_probas']), max_steps))
+        a.fill(np.nan)
+        for i, dd in enumerate(d['true_theory_probas']):
+            a[i][:len(dd)] = dd
+        plt.plot(np.arange(1, a.shape[1] + 1), a.T, alpha=0.25, color='k')
+        plt.plot(np.arange(1, a.shape[1] + 1), np.nanmean(a, axis=0), linewidth=5, color='r', label='mean')
         plt.legend()
         plt.xlabel('steps')
         plt.ylabel('prob best theory')
@@ -68,11 +73,15 @@ def plot_best_theory(data, names, save_path):
     changes = np.argwhere(np.array(data[0]['changes'])).flatten()
     fig, axs = plt.subplots(figsize=(10, 7))
     for c in changes:
-        plt.axvline(c, ymin=0, ymax=1, color='k')
+        plt.axvline(c, ymin=0, ymax=1, linestyle='--', color='b')
+    # for i, d, name in zip(range(len(data)), data, names):
+    #     plt.plot(np.arange(1, a.shape[1] + 1), np.array(d['true_theory_probas']).T, alpha=0.25, color=COLORS[i])
     for i, d, name in zip(range(len(data)), data, names):
-        plt.plot(np.array(d['true_theory_probas']).T, alpha=0.25, color=COLORS[i])
-    for i, d, name in zip(range(len(data)), data, names):
-        plt.plot(np.array(d['true_theory_probas']).mean(axis=0), linewidth=3, label=name,  color=COLORS[i])
+        a = np.zeros((len(d['true_theory_probas']), max_steps))
+        a.fill(np.nan)
+        for j, dd in enumerate(d['true_theory_probas']):
+            a[j][:len(dd)] = dd
+        plt.plot(np.arange(1, max_steps + 1), np.nanmean(a, axis=0), linewidth=3, label=name,  color=COLORS[i])
     plt.legend()
     plt.xlabel('steps')
     plt.ylabel('prob best theory')
@@ -95,7 +104,7 @@ def get_data_from_agent_and_env(data):
             to_track = np.array(data[str(i)]['success'])[start: end]
             indexes = np.argwhere(to_track).flatten()
             if indexes.size > 0:
-                results['success'].append(indexes[0] + 1)
+                results['success'].append(indexes[0] + 1 + start)
                 results['detected_success'] += 1
             to_track = (np.array(data[str(i)]['true_theory_probas']) > 0.5)[start: end]
             indexes = np.argwhere(to_track).flatten()
@@ -120,7 +129,7 @@ def get_data_from_agent_and_env(data):
         results[key] /= count
     return results
 
-# # no mapping inference, logic and contingency + noise
+# # # no mapping inference, logic and contingency + noise
 # envs = ['logic-noisy-v0', 'contingency-noisy-v0']
 # agent = 'no_infer_mapping'
 # expe_name = 'no_infer_mapping'
@@ -132,7 +141,7 @@ def get_data_from_agent_and_env(data):
 #     data = get_data_from_agent_and_env(env_agent_data)
 #     env_data.append(data)
 #
-# save_path = plot_dir + 'no_change_no_infer_mapping' + '/'
+# save_path = plot_dir + 'no_infer_mapping' + '/'
 # os.makedirs(save_path, exist_ok=True)
 # for to_plot in ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07', 'frac_infer09']:
 #     data = [d[to_plot] for d in env_data]
@@ -142,59 +151,59 @@ def get_data_from_agent_and_env(data):
 #         n_detected = [d['detected_' + to_plot] for d in env_data]
 #     plot_histograms(data, n_detected, envs, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.4, n_bins=10)
 # plot_best_theory(env_data, envs, save_path)
-
-# no mapping inference, logic and contingency + noise
-agent = 'base'
-envs = ['logic-shuffle-noisy-v0', 'contingency-shuffle-noisy-v0']
-expe_name = 'base'
-explore_only = True
-env_data = []
-for env in envs:
-    env_ = env + '_' + str(explore_only)
-    env_agent_data = all_data[expe_name][env_][agent]
-    data = get_data_from_agent_and_env(env_agent_data)
-    env_data.append(data)
-
-save_path = plot_dir + 'no_change_infer_mapping' + '/'
-os.makedirs(save_path, exist_ok=True)
-for to_plot in ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07', 'frac_infer09']:
-    data = [d[to_plot] for d in env_data]
-    if 'frac' in to_plot:
-        n_detected = None
-    else:
-        n_detected = [d['detected_' + to_plot] for d in env_data]
-    plot_histograms(data, n_detected, envs, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.4, n_bins=10)
-plot_best_theory(env_data, envs, save_path)
-
-
-# with agent change
-agents = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-envs = ['changeAgent-noisy-v0', 'changeAgent-shuffle-noisy-10-v0']
-expe_name = 'with_agent_change'
-explore_only = True
-for env in envs:
-    agent_data = []
-    env_ = env + '_' + str(explore_only)
-    for agent in agents:
-        env_agent_data = all_data[expe_name][env_][agent]
-        data = get_data_from_agent_and_env(env_agent_data)
-        agent_data.append(data)
-    save_path = plot_dir + expe_name + '/' + env + '/'
-    os.makedirs(save_path, exist_ok=True)
-    for to_plot in ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07', 'frac_infer09']:
-        data = [d[to_plot] for d in agent_data]
-        if 'frac' in to_plot:
-            n_detected = None
-        else:
-            n_detected = [d['detected_' + to_plot] for d in agent_data]
-        plot_histograms(data, n_detected, agents, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.3, n_bins=10)
-    plot_best_theory(agent_data, agents, save_path)
+#
+# # no mapping inference, logic and contingency + noise
+# agent = 'base'
+# envs = ['logic-shuffle-noisy-v0', 'contingency-shuffle-noisy-v0']
+# expe_name = 'base'
+# explore_only = True
+# env_data = []
+# for env in envs:
+#     env_ = env + '_' + str(explore_only)
+#     env_agent_data = all_data[expe_name][env_][agent]
+#     data = get_data_from_agent_and_env(env_agent_data)
+#     env_data.append(data)
+#
+# save_path = plot_dir + 'no_change_infer_mapping' + '/'
+# os.makedirs(save_path, exist_ok=True)
+# for to_plot in ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07', 'frac_infer09']:
+#     data = [d[to_plot] for d in env_data]
+#     if 'frac' in to_plot:
+#         n_detected = None
+#     else:
+#         n_detected = [d['detected_' + to_plot] for d in env_data]
+#     plot_histograms(data, n_detected, envs, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.4, n_bins=10)
+# plot_best_theory(env_data, envs, save_path)
+#
+#
+# # with agent change
+# agents = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
+# envs = ['changeAgent-noisy-v0', 'changeAgent-shuffle-noisy-10-v0']
+# expe_name = 'with_agent_change'
+# explore_only = True
+# for env in envs:
+#     agent_data = []
+#     env_ = env + '_' + str(explore_only)
+#     for agent in agents:
+#         env_agent_data = all_data[expe_name][env_][agent]
+#         data = get_data_from_agent_and_env(env_agent_data)
+#         agent_data.append(data)
+#     save_path = plot_dir + expe_name + '/' + env + '/'
+#     os.makedirs(save_path, exist_ok=True)
+#     for to_plot in ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07', 'frac_infer09']:
+#         data = [d[to_plot] for d in agent_data]
+#         if 'frac' in to_plot:
+#             n_detected = None
+#         else:
+#             n_detected = [d['detected_' + to_plot] for d in agent_data]
+#         plot_histograms(data, n_detected, agents, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.3, n_bins=10)
+#     plot_best_theory(agent_data, agents, save_path)
 
 envs = ['changeAgent-noisy-7-v0', 'changeAgent-noisy-10-v0', 'changeAgent-noisy-15-v0',
             'changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0']
 agents = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
 expe_name = 'switch_frequency'
-for explore_only in [True, False]:
+for explore_only in [False, True]:
     if explore_only:
         expe_name = 'switch_frequency'
     else:
@@ -211,7 +220,7 @@ for explore_only in [True, False]:
         if explore_only:
             to_plotss = ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07', 'frac_infer09']
         else:
-            to_plotss = ['success', 'frac_success']
+            to_plotss = ['success']
         for to_plot in to_plotss:
             data = [d[to_plot] for d in agent_data]
             if 'frac' in to_plot:
