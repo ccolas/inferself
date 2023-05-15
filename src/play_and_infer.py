@@ -32,7 +32,8 @@ ARGS = dict(n_objs=4,
             hierarchical=True,
             p_change=0.1,
             explore_only=False,  # if true, the agent only explores and the goal is removed from the env
-            explore_randomly=False
+            explore_randomly=False,
+            no_noise_inference=False
             )
 
 def play_and_infer(env=ENV):
@@ -45,8 +46,11 @@ def play_and_infer(env=ENV):
     if args['explore_only']:
         env.no_goal = True
     args.update(n_objs=env.n_candidates)
-    inferself = InferSelf(env=env,
-                          args=args)
+    if args['no_noise_inference']:
+        assert False
+    else:
+        inferself = InferSelf(env=env,
+                              args=args)
 
     running = True
     while running:

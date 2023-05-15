@@ -19,7 +19,7 @@ temp_noise = np.array([1, 1, 1., 1, 1])
 discrete_noise_values = np.array([0, 0.05, 0.1, 0.15, 0.2])
 proba_discrete_noise = temp_noise / sum(temp_noise)
 
-expe_name = 'switch_frequency'
+expe_name = 'switch_frequency_no_noise_false'
 
 if expe_name == 'with_agent_change':
     explore_exploit = [True]
@@ -83,18 +83,19 @@ def get_args(variant, explore_only=False):
                 hierarchical=False,
                 p_change=0.1,
                 explore_only=explore_only,  # if true, the agent only explores and the goal is removed from the env
-                explore_randomly=False
+                explore_randomly=False,
+                no_noise_inference=False
                 )
-    if variant == 'base':
+    if 'base'in variant:
         pass
     elif variant == 'no_infer_mapping':
         args['infer_mapping'] = False
-    elif variant == 'explicit_resetter':
+    elif 'explicit_resetter' in variant:
         args['explicit_resetting'] = True
-    elif variant == 'current_focused_forgetter':
+    elif 'current_focused_forgetter' in variant:
         args['likelihood_weight'] = 2
         args['forget_param'] = 5
-    elif variant == 'hierarchical':
+    elif  'hierarchical' in variant:
         args['hierarchical'] = True
     elif variant == 'random_explo':
         args['explore_randomly'] = True
@@ -102,6 +103,8 @@ def get_args(variant, explore_only=False):
         args['biased_input_mapping'] = True
     else:
         raise NotImplementedError
+    if 'no_noise' in variant:
+        args['no_noise_inference'] = True
 
     return args
 
