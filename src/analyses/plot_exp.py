@@ -7,8 +7,8 @@ plot_dir = "../data/plots/"
 expe_name = 'without_agent_change'
 data_path = save_dir + expe_name + '.pkl'
 
-with open(data_path, 'rb') as f:
-    all_data = pickle.load(f)
+#with open(data_path, 'rb') as f:
+#    all_data = pickle.load(f)
 
 # # How slower is it when we need to infer action mapping? if we have a prior?
 # agents = ['base', 'no_infer_mapping', 'biased_action_mapping']
@@ -141,6 +141,7 @@ with open(data_path, 'rb') as f:
 #
 # ##################################################################3
 #
+"""
 expe_name = 'with_agent_change'
 data_path = save_dir + expe_name + '.pkl'
 
@@ -269,12 +270,29 @@ envs = ['changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'ch
         'changeAgent-shuffle-noisy-20-v0']
 agents = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
 plot_name = 'difficulty_f_freq'
+
+
+"""
+
+with open('../output/switch_frequency_no_noise_false.pkl', 'rb') as f:
+    all_data = pickle.load(f)
+#print(len(all_data.items()))
+#print(all_data.keys())
+#for k, v in all_data.items():
+#    print(k)
+#    print(v.keys())
+agents = ['base_no_noise', 'explicit_resetter_no_noise']
+envs = ['changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0']
+
+all_data = all_data['switch_frequency_no_noise_false']
+
 for agent in agents:
-    for explore_only in [True, False]:
+    for explore_only in [False, True]:
         all_n_steps_before = []
         for env in envs:
             env_ = env + '_' + str(explore_only)
             n_steps_before = []
+            print(all_data[env_].keys())
             for i in all_data[env_][agent].keys():
                 if 'True' in env_:
                     to_track = np.array(all_data[env_][agent][str(i)]['true_theory_probas']) > 0.7
@@ -294,14 +312,17 @@ for agent in agents:
         plt.gca().set_ylim(bottom=0)
         if 'True' in env_:
             plt.ylabel('steps before self identification')
-            plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{agent}_inference.png')
+            plt.show()
+            #plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{agent}_inference.png')
         else:
             plt.ylabel('steps before game solved')
-            plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{agent}_solved.png')
-            frac_solved = [len(d)/10 for d in data]
+            plt.show()
+            #plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{agent}_solved.png')
+            frac_solved = [len(d)/50 for d in data]
             fig, ax = plt.subplots(figsize=(15, 7))
             plt.bar(np.arange(len(frac_solved)), frac_solved)
             plt.xticks(np.arange(len(frac_solved)), envs)
             plt.ylabel('fraction solved')
-            plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{agent}_frac_solved.png')
-    plt.close('all')
+            plt.show()
+            #plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{agent}_frac_solved.png')
+    #plt.close('all')
