@@ -14,6 +14,7 @@ COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e3
           '#7f7f7f', '#bcbd22', '#17becf']
 class InferSelfNoiseless:
     def __init__(self, env, args):
+        print("NOOO NOIIIISSSEEEE!!!!!!!!!!")
         self.args = args
         self.n_objs = args['n_objs']
         self.env = env
@@ -94,6 +95,10 @@ class InferSelfNoiseless:
         best_agent_id = self.theories[best_theory_id]['agent_id']
         data = self.get_smooth_agent_probas()
 
+        if sum(self.probas)==0:
+            self.history_agent_probas.pop(-1)
+            self.reset_theories()
+            return self.update_theory(prev_obs, new_obs, action)
         #deal w resetting
         if self.args['explicit_resetting']:
             if data.shape[0] > 10 and self.time_since_last_reset > 3:
@@ -170,17 +175,17 @@ class InferSelfNoiseless:
             posteriors = posteriors / posteriors.sum()
 
         # make sure we don't get perfect confidence because that prevents any further learning
-        if np.max(posteriors) > 0.99:
-            posteriors[np.argmax(posteriors)] = 0.99
-            indexes = np.array([i for i in range(len(posteriors)) if i != np.argmax(posteriors)])
-            posteriors[indexes] = 0.01 / len(indexes)
+        #if np.max(posteriors) > 0.99:
+        #    posteriors[np.argmax(posteriors)] = 0.99
+        #    indexes = np.array([i for i in range(len(posteriors)) if i != np.argmax(posteriors)])
+        #    posteriors[indexes] = 0.01 / len(indexes)
         return posteriors
 
 
 
     #modify noise to be discrete
     def compute_posteriors_hierarchical(self, prev_obs, new_obs, probas, action):
-
+        p_change_by_theory = []
         #update noise assuming no change
         for i_theory, theory in enumerate(self.theories):
             obs_consistent = self.consistency_record[i_theory] + [int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))]
@@ -191,6 +196,7 @@ class InferSelfNoiseless:
             Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(np.array(obs_consistent)+1, self.args['p_change'], self.args['noise_values_discrete'],
                                                                                           self.args['noise_prior_discrete'], 'Backward')
             theory['p_change'] = JumpPost[-1]
+            p_change_by_theory.append(theory['p_change'])
             # print(f'New pc = {JumpPost[-1]}')
             #last col of alpha is nans after first run
             no_change_distrib = Alpha[:,0,-1]
@@ -199,7 +205,7 @@ class InferSelfNoiseless:
             change_distrib = Alpha[:,1,-1]
             if change_distrib.sum() > 0:
                 change_distrib = change_distrib/change_distrib.sum()
-
+        p_change_by_theory = np.array(p_change_by_theory)
         #now compute probas of theories
         #first compute posterior if no change, based on noise estimate given no change
         no_change_posteriors = np.zeros(self.n_theories)
@@ -217,8 +223,8 @@ class InferSelfNoiseless:
             posterior = self.prior_probas[i_theory] * (likelihood ** self.args['likelihood_weight'])
             change_posteriors[i_theory] = posterior  
         #weighted sum of posteriors in the 2 cases
-        nc = np.sum(change_posteriors * self.p_change) + np.sum(no_change_posteriors* (1-self.p_change))
-        posteriors = ((change_posteriors * self.p_change) + (no_change_posteriors * (1-self.p_change)))/nc
+        nc = np.sum(change_posteriors * p_change_by_theory) + np.sum(no_change_posteriors* (1-p_change_by_theory))
+        posteriors = ((change_posteriors * p_change_by_theory) + (no_change_posteriors * (1-p_change_by_theory)))/nc
         return posteriors
 
 
@@ -345,10 +351,13 @@ class InferSelfNoiseless:
         max_score = np.max(action_scores)
         return np.argwhere(action_scores == max_score).flatten(), np.argmax(action_scores)
 
+    def get_noise_mean(self, x, std=1):
+        return ""
+
     def estimate_posteriors(self, inputs):
         obs_str, obs_prob, prev_obs, action, probas = inputs
         poss_obs = s2dict(obs_str)
-        new_probas, _ = self.compute_posteriors(prev_obs, poss_obs, probas, action)
+        new_probas = self.compute_posteriors(prev_obs, poss_obs, probas, action)
         info_gain = information_gain(probas, new_probas)
         return info_gain * obs_prob
 

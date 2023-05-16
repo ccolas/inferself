@@ -28,6 +28,7 @@ class InferSelf:
         else:
             raise NotImplementedError
         self.history_agent_probas = [[1/self.n_objs for _ in range(self.n_objs)]]
+        self.history_change_probas = []
         self.reset_memory()
         self.reset_theories()
         self.fig = None
@@ -239,7 +240,7 @@ class InferSelf:
         change_new_noise = []
         new_noise = []
         new_consistency_record = []
-
+        p_change_by_theory = []
         #update noise assuming no change
         for i_theory, theory in enumerate(self.theories):
             obs_consistent = self.consistency_record[i_theory] + [int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))]
@@ -250,6 +251,7 @@ class InferSelf:
             Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(np.array(obs_consistent)+1, self.args['p_change'],  self.args['noise_values_discrete'],
                                                                                           self.args['noise_prior_discrete'], 'Backward')
             theory['p_change'] = JumpPost[-1]
+            p_change_by_theory.append(theory['p_change'])
             # print(f'New pc = {JumpPost[-1]}')
             #last col of alpha is nans after first run
             no_change_distrib = Alpha[:,0,-1]
@@ -261,7 +263,7 @@ class InferSelf:
                 change_distrib = change_distrib/change_distrib.sum()
             change_new_noise.append(change_distrib)
             new_noise.append(rGamma[:,-1])
-
+        p_change_by_theory = np.array(p_change_by_theory)
         #now compute probas of theories
         #first compute posterior if no change, based on noise estimate given no change
         no_change_posteriors = np.zeros(self.n_theories)
@@ -281,8 +283,8 @@ class InferSelf:
             posterior = self.prior_probas[i_theory] * (likelihood ** self.args['likelihood_weight'])
             change_posteriors[i_theory] = posterior  
         #weighted sum of posteriors in the 2 cases
-        nc = np.sum(change_posteriors * self.p_change) + np.sum(no_change_posteriors* (1-self.p_change))
-        posteriors = ((change_posteriors * self.p_change) + (no_change_posteriors * (1-self.p_change)))/nc
+        nc = np.sum(change_posteriors * p_change_by_theory) + np.sum(no_change_posteriors* (1-p_change_by_theory))
+        posteriors = ((change_posteriors * p_change_by_theory) + (no_change_posteriors * (1-p_change_by_theory)))/nc
         return posteriors, (new_noise, new_consistency_record)
 
 
@@ -598,9 +600,18 @@ class InferSelf:
             data = smooth_data
         return data
 
+    def get_top_theory(self):
+        return self.theories[np.argmax(self.probas)]
+
     def render(self, true_agent=None, smooth=5):
         data = np.atleast_2d(np.array(self.history_agent_probas.copy()))
+
         smooth_data = self.get_smooth_agent_probas(smooth=smooth)
+
+        top_theory = self.get_top_theory()
+        self.history_change_probas.append(top_theory['p_change'])
+        print(top_theory['p_change'])
+        data2 = self.history_change_probas
         if self.fig is None:
             self.fig, self.ax = plt.subplots()
             for i, d in zip(range(data.shape[1]), data.T):
@@ -614,6 +625,7 @@ class InferSelf:
             plt.show(block=False)
         if true_agent is not None:
             self.ax.scatter(data.shape[0] - 1, 1, c=COLORS[true_agent])
+        self.ax.plot(data2, c="black")
         for i, d in zip(range(data.shape[1]), data.T):
             self.ax.plot(d, c=COLORS[i])
         for i, d in zip(range(data.shape[1]), smooth_data.T):

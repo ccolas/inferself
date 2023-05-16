@@ -4,6 +4,7 @@ import os
 import gym
 import gym_gridworld
 from inferself import InferSelf
+from inferself_noiseless import InferSelfNoiseless
 import csv
 import numpy as np
 
@@ -59,7 +60,7 @@ elif expe_name == 'switch_frequency_no_noise_false':
     # expe switch frequency
     explore_exploit = [False]
     env_list = ['changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0']
-    variants = ['base_no_noise', 'explicit_resetter_no_noise', 'hierarchical_no_noise']
+    variants = ['base_no_noise', 'explicit_resetter_no_noise']#, 'hierarchical_no_noise']
 else:
     raise NotImplementedError
 
@@ -130,7 +131,12 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
         env.unwrapped.no_goal = True
     prev_obs, prev_info = env.reset()
     args.update(n_objs=env.n_candidates)
-    inferself = InferSelf(env=env, args=args)
+    if args['no_noise_inference']:
+        inferself = InferSelfNoiseless(env=env,
+                              args=args)
+    else:
+        inferself = InferSelf(env=env,
+                              args=args)
     previous_agent = None
     for t in range(time_limit):
         # print(t)
@@ -175,7 +181,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     return data
 
 
-def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/", overwrite=False,
+def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="output/", overwrite=False,
                    time_limit=60):
     data_path = save_dir + exp_name + '.pkl'
     print(f'Running experiment {exp_name}, saving to {data_path}')
