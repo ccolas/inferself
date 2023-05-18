@@ -20,7 +20,7 @@ COLORS = {0: [0.0, 0.0, 0.0], 1: [0.5, 0.5, 0.5],
 class GridworldEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, game_type, noise=0, no_goal=False, shuffle_keys=False, change_agent_every=10, oneswitch=False):
+    def __init__(self, game_type, noise=0, no_goal=False, shuffle_keys=False, change_agent_every=10, oneswitch=False, markovian=False, p_switch=0):
         assert game_type in ['logic', 'logic_extended', 'logic_extended_h',
                              'contingency', 'contingency_extended',
                              'change_agent', 'change_agent_extended', 'change_agent_extended_1', 'change_agent_extended_2']
@@ -32,6 +32,10 @@ class GridworldEnv(gym.Env):
         self.action_space = spaces.Discrete(4)
         self.action_pos_dict = np.array([[-1, 0], [1, 0], [0, -1], [0, 1]])
         self.action_names =  ['up', 'down', 'left', 'right']
+        self.markovian = markovian
+        self.p_switch = p_switch
+        if self.markovian:
+            assert self.p_switch > 0
 
         self.shuffle_keys = shuffle_keys  # whether to shuffle the action mapping between episode
         self.noise = noise
@@ -245,8 +249,12 @@ class GridworldEnv(gym.Env):
                 self.agent_id = np.random.choice([i for i in range(len(self.candidates_pos)) if i != self.agent_id])
                 # print(f'AGENT CHANGES OMGGG: {self.agent_id}')
         else:
-            if self.step_counter % self.change_agent_every == 0:
-                self.agent_id = np.random.choice([i for i in range(len(self.candidates_pos)) if i != self.agent_id])
+            if self.markovian:
+                if np.random.rand() < self.p_switch:
+                    self.agent_id = np.random.choice([i for i in range(len(self.candidates_pos)) if i != self.agent_id])
+            else:
+                if self.step_counter % self.change_agent_every == 0:
+                    self.agent_id = np.random.choice([i for i in range(len(self.candidates_pos)) if i != self.agent_id])
                 # print(f'AGENT CHANGES OMGGG: {self.agent_id}')
 
         action = int(action)

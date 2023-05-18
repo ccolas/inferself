@@ -106,6 +106,27 @@ register(id='changeAgent-15-v0',
                      change_agent_every=15,
                      noise=0))
 
+register(id='changeAgent-markovian-7-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     p_switch=1/7,
+                     markovian=True,
+                     noise=0))
+
+register(id='changeAgent-markovian-10-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     p_switch=1/10,
+                     markovian=True,
+                     noise=0))
+
+register(id='changeAgent-markovian-15-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     p_switch=1/15,
+                     markovian=True,
+                     noise=0))
+
 register(id='changeAgent-noisy-7-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='change_agent',
