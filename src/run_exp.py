@@ -3,8 +3,8 @@ import pickle
 import os
 import gym
 import gym_gridworld
-from inferself import InferSelf
-from inferself_noiseless import InferSelfNoiseless
+from inferself2 import InferSelf
+# from inferself_noiseless import InferSelfNoiseless
 import csv
 import numpy as np
 
@@ -16,96 +16,45 @@ import numpy as np
 
 n_runs = 50
 
-temp_noise = np.array([1, 1, 1., 1, 1])
-discrete_noise_values = np.array([0, 0.05, 0.1, 0.15, 0.2])
-proba_discrete_noise = temp_noise / sum(temp_noise)
-
-expe_name = 'switch_frequency_no_noise_false'
-
-if expe_name == 'with_agent_change':
-    explore_exploit = [True]
-    env_list = ['changeAgent-noisy-v0', 'changeAgent-shuffle-noisy-10-v0']
-    variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-# elif expe_name == 'without_agent_change':
-#     env_list = ['logic-v0', 'logic-noisy-v0', 'logic-shuffle-v0', 'logic-shuffle-noisy-v0',
-#                 'contingency-v0', 'contingency-noisy-v0', 'contingency-shuffle-v0', 'contingency-shuffle-noisy-v0',]
-#     variants = ['base']#, 'no_infer_mapping', 'biased_action_mapping', 'random_explo']
-# elif expe_name == 'one_switch':
-#     assert False
-#     print("don't forget to cancel the goal!")
-#     env_list = ['changeAgent-shuffle-noisy-oneswitch-v0']
-#     variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-elif expe_name == 'no_infer_mapping':
-    explore_exploit = [True]
-    env_list = ['logic-noisy-v0', 'contingency-noisy-v0']
-    variants = ['no_infer_mapping']
-elif expe_name == 'base':
-    explore_exploit = [True]
-    env_list = ['logic-shuffle-noisy-v0', 'contingency-shuffle-noisy-v0']
-    variants = ['base']
-elif expe_name == 'switch_frequency':
-    # expe switch frequency
-    explore_exploit = [True]
-    env_list = ['changeAgent-noisy-7-v0', 'changeAgent-noisy-10-v0', 'changeAgent-noisy-15-v0',
-                'changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0']
-    variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-elif expe_name == 'switch_frequency_false':
-    # expe switch frequency
-    explore_exploit = [False]
-    env_list = ['changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0',
-                'changeAgent-noisy-7-v0', 'changeAgent-noisy-10-v0', 'changeAgent-noisy-15-v0',
-                'changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0']
-    variants = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-elif expe_name == 'switch_frequency_no_noise_false':
-    # expe switch frequency
-    explore_exploit = [False]
-    env_list = ['changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0']
-    variants = ['base_no_noise', 'explicit_resetter_no_noise']#, 'hierarchical_no_noise']
-else:
-    raise NotImplementedError
+expe_name = 'all_expe'
+envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0',
+            'changeAgent-v0', 'changeAgent-shuffle-v0',
+            'changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0',
+            'changeAgent-markovian-7-v0', 'changeAgent-markovian-10-v0', 'changeAgent-markovian-15-v0']
+agents = ['base', 'hierarchical']
+explore_exploit = [False]
 
 
-
-def get_args(variant, explore_only=False):
+def get_args(env, agent, explore_only=False):
     args = dict(n_objs=4,
+                # what to infer
+                infer_mapping=True,
+                infer_switch=False,
+                # priors
                 biased_input_mapping=False,
                 bias_bot_mvt='uniform',  # static or uniform
-                simulation='sampling',  # exhaustive or sampling
-                n_simulations=10,  # number of simulations if sampling
-                infer_mapping=True,
-                threshold=0.6,  # confidence threshold for agent id
-                noise_prior_beta=[1, 15],
-                noise_prior_discrete=proba_discrete_noise,
-                noise_values_discrete=discrete_noise_values,
-                forget_param=None,  # the smaller this is, the more forgetful we are when computing noise
+                p_switch=0.1,
+                # learning strategies and biases
                 likelihood_weight=1,
                 explicit_resetting=False,
-                print_status=False,
-                hierarchical=False,
-                p_change=0.1,
-                explore_only=explore_only,  # if true, the agent only explores and the goal is removed from the env
+                # exploration
+                explore_only=False,  # if true, the agent only explores and the goal is removed from the env
                 explore_randomly=False,
-                no_noise_inference=False
+                simulation='sampling',  # exhaustive or sampling
+                n_simulations=10,  # number of simulations if sampling
+                # explore-exploit
+                explore_exploit_threshold=0.5,  # confidence threshold for agent id
+                verbose=False,
                 )
-    if 'base'in variant:
-        pass
-    elif variant == 'no_infer_mapping':
+    if 'shuffle' not in env:
         args['infer_mapping'] = False
-    elif 'explicit_resetter' in variant:
-        args['explicit_resetting'] = True
-    elif 'current_focused_forgetter' in variant:
-        args['likelihood_weight'] = 2
-        args['forget_param'] = 5
-    elif  'hierarchical' in variant:
-        args['hierarchical'] = True
-    elif variant == 'random_explo':
-        args['explore_randomly'] = True
-    elif variant == 'biased_action_mapping':
-        args['biased_input_mapping'] = True
     else:
-        raise NotImplementedError
-    if 'no_noise' in variant:
-        args['no_noise_inference'] = True
+        args['infer_mapping'] = True
+
+    if agent == 'hierarchical':
+        args['infer_switch'] = True
+    else:
+        args['infer_switch'] = False
 
     return args
 
@@ -119,24 +68,24 @@ def get_prob_of_true(s, true_agent, true_mapping):
                 if np.any(theory['input_mapping'][i] != d):
                     found_it = False
         if found_it:
-            return s.probas[i_theory], s.get_noise_mean(s.theories[i_theory])
+            return s.current_posterior_over_theories[i_theory], s.get_noise_mean(s.theories[i_theory])
 
 
 def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     # run exp for this env/arg set
-    args = get_args(agent, explore_only)
+    args = get_args(env_name, agent, explore_only)
     env = gym.make(env_name)
     data = dict(zip(keys, [[] for _ in range(len(keys))]))
     if args['explore_only']:
         env.unwrapped.no_goal = True
     prev_obs, prev_info = env.reset()
     args.update(n_objs=env.n_candidates)
-    if args['no_noise_inference']:
-        inferself = InferSelfNoiseless(env=env,
-                              args=args)
-    else:
-        inferself = InferSelf(env=env,
-                              args=args)
+    # if args['no_noise_inference']:
+    #     inferself = InferSelfNoiseless(env=env,
+    #                           args=args)
+    # else:
+    inferself = InferSelf(env=env,
+                          args=args)
     previous_agent = None
     for t in range(time_limit):
         # print(t)
@@ -146,8 +95,8 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
                 mode = 1
         action = inferself.get_action(prev_info['semantic_state'], enforce_mode=mode)
         obs, rew, done, info = env.step(action)
-        theory, proba = inferself.update_theory(prev_info['semantic_state'], info['semantic_state'], action)
-
+        inferself.update_theory(prev_info['semantic_state'], info['semantic_state'], action)
+        theory, proba = inferself.get_best_theory(get_proba=True)
         # did the agent change?
         if previous_agent != env.unwrapped.agent_id and t > 0:
             change = True
@@ -165,11 +114,11 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
                         map=info['semantic_state']["map"].flatten(),
                         action=action,
                         true_self=env.unwrapped.agent_id,
-                        all_self_probas=inferself.history_agent_probas[-1],
+                        all_self_probas=inferself.history_posteriors_over_agents[-1],
                         true_mapping=env.unwrapped.action_pos_dict,
                         all_mapping_probas=inferself.get_mapping_probas(),
                         true_theory_probas=true_theory_prob,
-                        agent_found=true_theory_prob > 0.7,
+                        agent_found=true_theory_prob > 0.5,
                         true_theory_noise_mean=noise_mean,
                         top_theory=theory,
                         top_theory_proba=proba)  # which theory is correct? get prob of that theory
@@ -181,7 +130,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     return data
 
 
-def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="output/", overwrite=False,
+def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/", overwrite=False,
                    time_limit=60):
     data_path = save_dir + exp_name + '.pkl'
     print(f'Running experiment {exp_name}, saving to {data_path}')
@@ -216,5 +165,5 @@ def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="output/", 
 
 
 if __name__ == '__main__':
-    run_experiment(exp_name=expe_name, envs=env_list, agents=variants, explore_exploit=explore_exploit)
+    run_experiment(exp_name=expe_name, envs=envs, agents=agents, explore_exploit=explore_exploit)
 

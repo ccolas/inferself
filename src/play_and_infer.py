@@ -3,7 +3,7 @@ import pygame
 import gym
 from inferself2 import InferSelf
 
-ENV = 'changeAgent-shuffle-v0'
+ENV = 'changeAgent-markovian-7-v0'
 
 ARGS = dict(n_objs=4,
             # what to infer

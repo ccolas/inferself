@@ -202,13 +202,21 @@ class InferSelf:
 
         # fix probabilities: normalize / reset / clip
         if posterior_over_theories.sum() > 0:
+            posterior_over_theories = np.asarray(posterior_over_theories).astype('float64')
             posterior_over_theories = posterior_over_theories / posterior_over_theories.sum()  # normalize
+
 
         # make sure we don't get perfect confidence because that prevents any further learning
         if np.max(posterior_over_theories) > 0.99:
             posterior_over_theories[np.argmax(posterior_over_theories)] = 0.99
             indexes = np.array([i for i in range(len(posterior_over_theories)) if i != np.argmax(posterior_over_theories)])
             posterior_over_theories[indexes] = 0.01 / len(indexes)
+            posterior_over_theories = np.asarray(posterior_over_theories).astype('float64')
+            posterior_over_theories /= posterior_over_theories.sum()  # normalize
+        posterior_over_theories = np.round(posterior_over_theories, 5)
+        posterior_over_theories = fix_p(posterior_over_theories)
+        if posterior_over_theories.sum() != 1:
+            stop = 1
         return posterior_over_theories, posterior_p_switch
 
     def compute_likelihood(self, theory, prev_obs, new_obs, action):
@@ -398,7 +406,7 @@ class InferSelf:
                     if self.args['verbose']: print('  explore')
                     action = np.random.choice(good_actions_explore)
         elif mode == 'exploit':
-            print('  exploit')
+            if self.args['verbose']: print('  exploit')
             good_actions_exploit = self.exploit(obs)
             action = np.random.choice(good_actions_exploit)
         else:
@@ -431,9 +439,12 @@ class InferSelf:
         predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
         return np.all(predicted_pos == new_pos)
 
-    def get_best_theory(self):
+    def get_best_theory(self, get_proba=False):
         theory_id = np.argmax(self.current_posterior_over_theories)
-        return self.theories[theory_id]
+        if get_proba:
+            return  self.theories[theory_id], self.current_posterior_over_theories[theory_id]
+        else:
+            return self.theories[theory_id]
 
     @property
     def n_theories(self):
@@ -460,6 +471,16 @@ class InferSelf:
             id = np.argmax(probs)
             print("    agent id: ", theories[id]['agent_id'], ", prob: ", probs[id], 'p_switch:', theories[id]['p_switch'])
             probs[id] = 0
+
+    def get_mapping_probas(self):
+        mapping_probs = np.zeros((len(self.directions), len(self.directions)))
+        #for each action, what's the prob of each direction
+        for action_idx in range(4):
+            for i_theory, theory in enumerate(self.theories):
+                #find in directions
+                dir_idx = self.directions.index(theory['input_mapping'][action_idx])
+                mapping_probs[action_idx][dir_idx] += self.current_posterior_over_theories[i_theory]
+        return mapping_probs
 
     def render(self, true_agent=None, smooth=5):
         data = np.atleast_2d(np.array(self.history_posteriors_over_agents.copy()))
@@ -517,6 +538,11 @@ def information_gain(p0, p1):
     p0 = [round(x,10) for x in p0]
     p1 = [round(x,10) for x in p1]
     return scipy.spatial.distance.jensenshannon(p0, p1)
+
+def fix_p( p):
+    if p.sum() != 1.0:
+        p = p*(1./p.sum())
+    return p
 
 if __name__ == '__main__':
     inferself = InferSelf()
