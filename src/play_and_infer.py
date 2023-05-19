@@ -1,7 +1,7 @@
 from copy import deepcopy
 import pygame
 import gym
-from inferself2 import InferSelf
+from inferself import InferSelf
 
 ENV = 'changeAgent-shuffle-v0'
 
@@ -23,7 +23,7 @@ ARGS = dict(n_objs=4,
             explore_randomly=False,
             simulation='sampling',  # exhaustive or sampling
             n_simulations=10,  # number of simulations if sampling
-            attention_bias = True,
+            attention_bias=True,
             mapping_forgetting_factor=0.5,
             forget_action_mapping=True,
             n_objs_attended_to=2,

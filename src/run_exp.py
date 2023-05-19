@@ -3,7 +3,7 @@ import pickle
 import os
 import gym
 import gym_gridworld
-from inferself2 import InferSelf
+from inferself import InferSelf
 # from inferself_noiseless import InferSelfNoiseless
 import csv
 import numpy as np
@@ -16,19 +16,17 @@ import numpy as np
 
 n_runs = 50
 
-expe_name = 'all_expe2'
-envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0',
-            'changeAgent-v0', 'changeAgent-shuffle-v0',
-            'changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0',
-            'changeAgent-markovian-7-v0', 'changeAgent-markovian-10-v0', 'changeAgent-markovian-15-v0']
-agents = ['hierarchical']  # 'base',
+expe_name = 'all_expe'
+envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-v0', 'changeAgent-shuffle-v0', 'changeAgent-7-v0', 'changeAgent-markovian-7-v0']
+agents = ['hierarchical', 'hierarchical_random_explo', 'hierarchical_attention_bias_1', 'hierarchical_attention_bias_2',
+          'hierarchical_forget_action_mapping', 'hierarchical_prior_action_mapping', 'hierarchical_forget_action_mapping_attention_bias_2']  # 'base',
 explore_exploit = [False]
 
 
 def get_args(env, agent, explore_only=False):
     args = dict(n_objs=4,
                 # what to infer
-                infer_mapping=True,
+                infer_mapping=False,
                 infer_switch=False,
                 # priors
                 biased_input_mapping=False,
@@ -37,11 +35,17 @@ def get_args(env, agent, explore_only=False):
                 # learning strategies and biases
                 likelihood_weight=1,
                 explicit_resetting=False,
+                # noise_prior_beta=[1, 15],
+                noise_prior=0.01,
                 # exploration
                 explore_only=False,  # if true, the agent only explores and the goal is removed from the env
                 explore_randomly=False,
                 simulation='sampling',  # exhaustive or sampling
                 n_simulations=10,  # number of simulations if sampling
+                attention_bias=False,
+                mapping_forgetting_factor=0.5,
+                forget_action_mapping=False,
+                n_objs_attended_to=2,
                 # explore-exploit
                 explore_exploit_threshold=0.5,  # confidence threshold for agent id
                 verbose=False,
@@ -50,11 +54,29 @@ def get_args(env, agent, explore_only=False):
         args['infer_mapping'] = False
     else:
         args['infer_mapping'] = True
-    if agent == 'hierarchical':
+    if 'hierarchical' in agent:
         args['infer_switch'] = True
     else:
         args['infer_switch'] = False
 
+    if 'random_explo' in agent:
+        args['explore_randomly'] = True
+
+    if 'attention_bias' in agent:
+        args['attention_bias'] = True
+        args['n_objs_attended_to'] = int(agent.split('_')[-1])
+
+    if 'forget_action_mapping' in agent:
+        args['forget_action_mapping'] = True
+        args['biased_input_mapping'] = True
+    else:
+        args['forget_action_mapping'] = False
+        args['biased_input_mapping'] = False
+
+    if 'prior_action_mapping' in agent:
+        args['biased_input_mapping'] = True
+    else:
+        args['biased_input_mapping'] = False
     return args
 
 
@@ -131,7 +153,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
 
 
 def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/", overwrite=False,
-                   time_limit=60):
+                   time_limit=150):
     data_path = save_dir + exp_name + '.pkl'
     print(f'Running experiment {exp_name}, saving to {data_path}')
 

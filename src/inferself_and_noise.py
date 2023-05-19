@@ -1,15 +1,9 @@
 import numpy as np
-import itertools
-import math
 import scipy
 from copy import deepcopy
-import gym
-import gym_gridworld
 from scipy.stats import beta
 import matplotlib.pyplot as plt
-from hierarchical_scratch import ForwardBackward_BernoulliJump
-from multiprocessing import Pool
-import time
+
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
 

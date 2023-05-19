@@ -207,7 +207,7 @@ if __name__ == '__main__':
         change = np.random.rand() < p_change
         change=j==50
         if change:
-            p = 0.9# np.random.uniform(0, 1)
+            p = 0.2# np.random.uniform(0, 1)
         probabilities.append(p)
         outcomes.append(np.random.rand() > p)
     outcomes = np.array(outcomes) + 1

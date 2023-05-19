@@ -1,328 +1,175 @@
+import os
+import numpy as np
 import matplotlib.pyplot as plt
 import pickle
-import numpy as np
+import matplotlib
+font = {'size'   : 15}
+matplotlib.rc('font', **font)
 
-save_dir = "../data/experiments/"
-plot_dir = "../data/plots/"
-expe_name = 'without_agent_change'
-data_path = save_dir + expe_name + '.pkl'
+COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
-#with open(data_path, 'rb') as f:
-#    all_data = pickle.load(f)
+save_dir = "../../data/experiments/"
+plot_dir = "../../data/plots/"
 
-# # How slower is it when we need to infer action mapping? if we have a prior?
-# agents = ['base', 'no_infer_mapping', 'biased_action_mapping']
-# envs = ['logic-v0', 'logic-noisy-v0', 'contingency-v0', 'contingency-noisy-v0']
-# plot_name = 'inference_action_mapping'
-# for env in envs:
-#     for explore_only in [True, False]:
-#         env_ = env + '_' + str(explore_only)
-#         all_n_steps_before = []
-#         for agent in agents:
-#             n_steps_before = []
-#             for i in all_data[env_][agent].keys():
-#                 if 'True' in env_:
-#                     to_track = np.array(all_data[env_][agent][str(i)]['true_theory_probas']) > 0.7
-#                 else:
-#                     to_track = np.array(all_data[env_][agent][str(i)]['success'])
-#                 indexes = np.argwhere(to_track).flatten()
-#                 if indexes.size > 0:
-#                     n_steps_before.append(indexes[0])
-#                 else:
-#                     n_steps_before.append(np.nan)
-#             all_n_steps_before.append(n_steps_before)
-#         fig, ax = plt.subplots(figsize=(10, 7))
-#         data = all_n_steps_before
-#         for i_d in range(len(data)):
-#             data[i_d] = [dd for dd in data[i_d] if not np.isnan(dd)]
-#         plt.boxplot(data, labels=agents)
-#         plt.gca().set_ylim(bottom=0)
-#         if 'True' in env_:
-#             plt.ylabel('steps before self identification')
-#             plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}_inference.png')
-#         else:
-#             plt.ylabel('steps before game solved')
-#             plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}_solved.png')
-#     plt.close('all')
-#
-# # How slower is it when there is noise vs no noise (noise inference in both cases)?
-# agent = 'base'
-# envs = [('logic-v0', 'logic-noisy-v0'), ('contingency-v0', 'contingency-noisy-v0')]
-# plot_name = 'noisy_vs_non_noisy'
-# for env_pair in envs:
-#     for explore_only in [True, False]:
-#         all_n_steps_before = []
-#         for env in env_pair:
-#             env_ = env + '_' + str(explore_only)
-#             n_steps_before = []
-#             for i in all_data[env_][agent].keys():
-#                 if 'True' in env_:
-#                     to_track = np.array(all_data[env_][agent][str(i)]['true_theory_probas']) > 0.7
-#                 else:
-#                     to_track = np.array(all_data[env_][agent][str(i)]['success'])
-#                 indexes = np.argwhere(to_track).flatten()
-#                 if indexes.size > 0:
-#                     n_steps_before.append(indexes[0])
-#                 else:
-#                     n_steps_before.append(np.nan)
-#             all_n_steps_before.append(n_steps_before)
-#
-#         fig, ax = plt.subplots(figsize=(10, 7))
-#         data = np.array(all_n_steps_before).T
-#         plt.boxplot(data, labels=env_pair)
-#         plt.gca().set_ylim(bottom=0)
-#         if 'True' in env_:
-#             plt.ylabel('steps before self identification')
-#             plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env_pair[0].split("-")[0]}_inference.png')
-#         else:
-#             plt.ylabel('steps before game solved')
-#             plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env_pair[0].split("-")[0]}_solved.png')
-#     plt.close('all')
-#
-#
-#
-#
-# # how good is the estimation of the noise for the true agent theory?
-# # envs = ['logic-shuffle-noisy-v0', 'contingency-shuffle-noisy-v0']
-# # agent = 'base'
-# # plot_name = 'noise_tracking'
-# # for env in envs:
-# #     all_noises = []
-# #     for i in  all_data[env][agent].keys():
-# #         noise = np.array(all_data[env][agent][str(i)]['true_theory_noise_mean'])
-# #         all_noises.append(noise)
-# #     max_len = np.max([len(data) for data in all_noises])
-# #     data = np.zeros((len(all_noises), max_len))
-# #     data.fill(np.nan)
-# #     for i_noise, noises in enumerate(all_noises):
-# #         data[i_noise, :len(noises)] = noises
-# #     fig, ax = plt.subplots(figsize=(10, 7))
-# #     plt.plot(np.nanmean(data, axis=0))
-# #     plt.gca().set_ylim(bottom=0)
-# #     plt.ylabel('noise estimate true theory')
-# #     plt.fill_between(np.arange(max_len), np.nanmean(data, axis=0) - np.nanstd(data, axis=0), np.nanmean(data, axis=0) + np.nanstd(data, axis=0), alpha=0.2)
-# #     plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}.png')
-# #     plt.close('all')
-#
-# # how fast is it (solving + inferring) if we just do random actions for the exploration step?
-# agents = ['base', 'random_explo']
-# envs = ['logic-shuffle-noisy-v0', 'contingency-shuffle-noisy-v0']
-# plot_name = 'optimal_vs_random_explo'
-# for env in envs:
-#     for explore_only in [True, False]:
-#         env_ = env + '_' + str(explore_only)
-#         all_n_steps_before = []
-#         for agent in agents:
-#             n_steps_before = []
-#             for i in all_data[env_][agent].keys():
-#                 if 'True' in env_:
-#                     to_track = np.array(all_data[env_][agent][str(i)]['true_theory_probas']) > 0.7
-#                 else:
-#                     to_track = np.array(all_data[env_][agent][str(i)]['success'])
-#                 indexes = np.argwhere(to_track).flatten()
-#                 if indexes.size > 0:
-#                     n_steps_before.append(indexes[0])
-#                 else:
-#                     n_steps_before.append(np.nan)
-#             all_n_steps_before.append(n_steps_before)
-#         fig, ax = plt.subplots(figsize=(10, 7))
-#         data = all_n_steps_before
-#         for i_d in range(len(data)):
-#             data[i_d] = [dd for dd in data[i_d] if not np.isnan(dd)]
-#         plt.boxplot(data, labels=agents)
-#         plt.gca().set_ylim(bottom=0)
-#         if 'True' in env_:
-#             plt.ylabel('steps before self identification')
-#             plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}_inference.png')
-#         else:
-#             plt.ylabel('steps before game solved')
-#             plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}_solved.png')
-#     plt.close('all')
-#
-# ##################################################################3
-#
-"""
-expe_name = 'with_agent_change'
-data_path = save_dir + expe_name + '.pkl'
+# compile all data
+all_data = dict()
+for expe_name in os.listdir(save_dir):
+    if 'all_data' not in expe_name:
+        data_path = save_dir + expe_name
+        with open(data_path, 'rb') as f:
+            data = pickle.load(f)
+        all_data.update(data)
 
-with open(data_path, 'rb') as f:
-    all_data = pickle.load(f)
-#
-# # how fast is it (solving + inferring) if we just do random actions for the exploration step?
-# agents = ['base', 'random_explo']
-# envs = ['changeAgent-shuffle-noisy-v0']
-# plot_name = 'optimal_vs_random_explo'
-# for env in envs:
-#     for explore_only in [True, False]:
-#         env_ = env + '_' + str(explore_only)
-#         all_n_steps_before = []
-#         for agent in agents:
-#             n_steps_before = []
-#             for i in all_data[env_][agent].keys():
-#                 if 'True' in env_:
-#                     to_track = np.array(all_data[env_][agent][str(i)]['true_theory_probas']) > 0.7
-#                 else:
-#                     to_track = np.array(all_data[env_][agent][str(i)]['success'])
-#                 indexes = np.argwhere(to_track).flatten()
-#                 if indexes.size > 0:
-#                     n_steps_before.append(indexes[0])
-#                 else:
-#                     n_steps_before.append(np.nan)
-#             all_n_steps_before.append(n_steps_before)
-#         fig, ax = plt.subplots(figsize=(10, 7))
-#         data = all_n_steps_before
-#         for i_d in range(len(data)):
-#             data[i_d] = [dd for dd in data[i_d] if not np.isnan(dd)]
-#         plt.boxplot(data, labels=agents)
-#         plt.gca().set_ylim(bottom=0)
-#         if 'True' in env_:
-#             plt.ylabel('steps before self identification')
-#             plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}_inference.png')
-#         else:
-#             plt.ylabel('steps before game solved')
-#             plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}_solved.png')
-#     plt.close('all')
+with open(save_dir + 'all_data.pkl', 'wb') as f:
+    pickle.dump(all_data, f)
 
-# best heirarchical model?
-agents = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-envs = ['changeAgent-v0', 'changeAgent-noisy-v0', 'changeAgent-shuffle-noisy-v0']
-plot_name = 'best_hierarchical'
-for env in envs:
-    for explore_only in [True, False]:
-        env_ = env + '_' + str(explore_only)
-        all_n_steps_before = []
-        for agent in agents:
-            n_steps_before = []
-            for i in all_data[env_][agent].keys():
-                if 'True' in env_:
-                    to_track = np.array(all_data[env_][agent][str(i)]['true_theory_probas']) > 0.7
-                else:
-                    to_track = np.array(all_data[env_][agent][str(i)]['success'])
-                indexes = np.argwhere(to_track).flatten()
-                if indexes.size > 0:
-                    n_steps_before.append(indexes[0])
-                else:
-                    n_steps_before.append(np.nan)
-            all_n_steps_before.append(n_steps_before)
-        fig, ax = plt.subplots(figsize=(10, 7))
-        data = all_n_steps_before
-        for i_d in range(len(data)):
-            data[i_d] = [dd for dd in data[i_d] if not np.isnan(dd)]
-        plt.boxplot(data, labels=agents)
-        plt.gca().set_ylim(bottom=0)
-        if 'True' in env_:
-            plt.ylabel('steps before self identification')
-            plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}_inference.png')
-        else:
-            plt.ylabel('steps before game solved')
-            plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}_solved.png')
-    plt.close('all')
-
-##################################################################3
-
-expe_name = 'one_switch'
-data_path = save_dir + expe_name + '.pkl'
-
-with open(data_path, 'rb') as f:
-    all_data = pickle.load(f)
-
-# Post switch recovery: test speed recovery after a switch a t=30
-agents = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-envs = ['changeAgent-shuffle-noisy-oneswitch-v0_True', 'changeAgent-shuffle-noisy-oneswitch-v0_False']
-plot_name = 'post_switch_recovery'
-for env in envs:
-    all_n_steps_before = []
-    for agent in agents:
-        n_steps_before = []
-        for i in all_data[env][agent].keys():
-            if 'True' in env:
-                to_track = np.array(all_data[env][agent][str(i)]['true_theory_probas']) > 0.7
-            else:
-                to_track = np.array(all_data[env][agent][str(i)]['success'])
-            indexes = np.array([i for i in np.argwhere(to_track).flatten() if i > 29])
-            if indexes.size > 0:
-                n_steps_before.append(indexes[0] - 30)
-            else:
-                n_steps_before.append(np.nan)
-        all_n_steps_before.append(n_steps_before)
-    fig, ax = plt.subplots(figsize=(10, 7))
-    data = all_n_steps_before
-    for i_d in range(len(data)):
-        data[i_d] = [dd for dd in data[i_d] if not np.isnan(dd)]
-    plt.boxplot(data, labels=agents)
-    plt.gca().set_ylim(bottom=0)
-    if 'True' in env:
-        plt.ylabel('steps before self identification')
-        plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}_inference.png')
+max_steps = 60
+n_seeds = 50
+def plot_histograms(data, n_detected, alg_names, save_path, ylabel=None, alpha=0.3, n_bins=10):
+    if n_detected:
+        fig, axs = plt.subplots(2, figsize=(10, 7))
     else:
-        plt.ylabel('steps before game solved')
-        plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{env}_solved.png')
+        fig, axs = plt.subplots(figsize=(10, 7))
+        axs = [axs]
+    min = np.min([np.min(d) for d in data])
+    max = np.max([np.max(d) for d in data])
+    if max - min < n_bins:
+        delta = 1
+        bins = np.arange(min, max + 2)
+        xs = np.arange(min, max + 1)
+    else:
+        delta = (max - min) // n_bins + 1
+        bins = np.arange(min, max + 2 * delta, delta)
+        xs = np.arange(min, max + delta , delta)
+    for i in range(len(data)):
+        ys, _ = np.histogram(data[i], bins=bins - delta / 2)
+        ys = ys.astype(float)
+        ys /= ys.sum()
+        ysmax = np.max(ys)
+        axs[0].bar(xs, ys, color=COLORS[i], alpha=alpha, label=alg_names[i], width=delta)
+        axs[0].axvline(np.mean(data[i]), ymin=0, ymax=ysmax, color=COLORS[i])
+        axs[0].set_xticks(bins)
+        if n_detected:
+            axs[1].bar([i * 1.2], [n_detected[i]], width=1, color=COLORS[i])
+            axs[1].legend(alg_names)
+            axs[1].set_ylabel(f'fraction {ylabel} detected')
+            axs[1].set_xticks([])
+    if ylabel:
+        if 'frac' in ylabel:
+            axs[0].set_title(f'distribution of % steps {ylabel} detected')
+            axs[0].set_xlabel('% steps')
+        else:
+            axs[0].set_title(f'distribution of # steps before {ylabel}')
+            axs[0].set_xlabel('steps')
+    axs[0].legend()
+    plt.savefig(save_path)
     plt.close('all')
 
-##################################################################3
+def plot_best_theory(data, names, save_path):
+    for d, name in zip(data, names):
+        changes = np.argwhere(np.array(d['changes'])).flatten()
+        fig, axs = plt.subplots(figsize=(10, 7))
+        for c in changes:
+            plt.axvline(c, ymin=0, ymax=1, linestyle='--', color='b')
+        a = np.zeros((len(d['true_theory_probas']), max_steps))
+        a.fill(np.nan)
+        for i, dd in enumerate(d['true_theory_probas']):
+            a[i][:len(dd)] = dd
+        plt.plot(np.arange(1, a.shape[1] + 1), a.T, alpha=0.25, color='k')
+        plt.plot(np.arange(1, a.shape[1] + 1), np.nanmean(a, axis=0), linewidth=5, color='r', label='mean')
+        plt.legend()
+        plt.xlabel('steps')
+        plt.ylabel('prob best theory')
+        plt.savefig(save_path + f'{name}_proba_best.png')
+        plt.close('all')
+    changes = np.argwhere(np.array(data[0]['changes'])).flatten()
+    fig, axs = plt.subplots(figsize=(10, 7))
+    for c in changes:
+        plt.axvline(c, ymin=0, ymax=1, linestyle='--', color='b')
+    # for i, d, name in zip(range(len(data)), data, names):
+    #     plt.plot(np.arange(1, a.shape[1] + 1), np.array(d['true_theory_probas']).T, alpha=0.25, color=COLORS[i])
+    for i, d, name in zip(range(len(data)), data, names):
+        a = np.zeros((len(d['true_theory_probas']), max_steps))
+        a.fill(np.nan)
+        for j, dd in enumerate(d['true_theory_probas']):
+            a[j][:len(dd)] = dd
+        plt.plot(np.arange(1, max_steps + 1), np.nanmean(a, axis=0), linewidth=3, label=name,  color=COLORS[i])
+    plt.legend()
+    plt.xlabel('steps')
+    plt.ylabel('prob best theory')
+    plt.savefig(save_path + f'all_proba_best.png')
+    plt.close('all')
 
-expe_name = 'switch_frequency'
-data_path = save_dir + expe_name + '.pkl'
+def get_data_from_agent_and_env(data):
+    results = dict(success=[], infer05=[], infer07=[], infer09=[],
+                   frac_infer05=[], frac_infer07=[], frac_infer09=[],
+                   detected_success=0, detected_infer05=0, detected_infer07=0, detected_infer09=0,
+                   true_theory_probas=[])
+    n_detected = []
+    count = 0
+    run_count = 0
+    for i in data.keys():
+        n_detected.append(0)
+        changes = [0] + list(np.argwhere(np.array(data[str(i)]['agent_change'])).flatten()) + [max_steps]
+        results['changes'] = np.array(data[str(i)]['agent_change'])
+        run_count += 1
+        to_track = np.array(data[str(i)]['success'])
+        indexes = np.argwhere(to_track).flatten()
+        if indexes.size > 0:
+            results['success'].append(indexes[0] + 1)
+            results['detected_success'] += 1
+        for start, end in zip(changes[:-1], changes[1:]):
+            count += 1
+            to_track = (np.array(data[str(i)]['true_theory_probas']) > 0.5)[start: end]
+            indexes = np.argwhere(to_track).flatten()
+            if indexes.size > 0:
+                results['infer05'].append(indexes[0] + 1)
+                results['frac_infer05'].append(to_track.sum() / len(to_track))
+                results['detected_infer05'] += 1
+            to_track = (np.array(data[str(i)]['true_theory_probas']) > 0.7)[start: end]
+            indexes = np.argwhere(to_track).flatten()
+            if indexes.size > 0:
+                results['infer07'].append(indexes[0] + 1)
+                results['frac_infer07'].append(to_track.sum() / len(to_track))
+                results['detected_infer07'] += 1
+            to_track = (np.array(data[str(i)]['true_theory_probas']) > 0.9)[start: end]
+            indexes = np.argwhere(to_track).flatten()
+            if indexes.size > 0:
+                results['infer09'].append(indexes[0] + 1)
+                results['frac_infer09'].append(to_track.sum() / len(to_track))
+                results['detected_infer09'] += 1
+        results['true_theory_probas'].append(np.array(data[str(i)]['true_theory_probas']))
+    for key in ['detected_infer05', 'detected_infer07', 'detected_infer09']:
+        results[key] /= count
+    results['detected_success'] /= run_count
+    return results
 
-with open(data_path, 'rb') as f:
-    all_data = pickle.load(f)
-envs = ['changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0',
-        'changeAgent-shuffle-noisy-20-v0']
-agents = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-plot_name = 'difficulty_f_freq'
-
-
-"""
-
-with open('../output/switch_frequency_no_noise_false.pkl', 'rb') as f:
-    all_data = pickle.load(f)
-#print(len(all_data.items()))
-#print(all_data.keys())
-#for k, v in all_data.items():
-#    print(k)
-#    print(v.keys())
-agents = ['base_no_noise', 'explicit_resetter_no_noise']
-envs = ['changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0']
-
-all_data = all_data['switch_frequency_no_noise_false']
-
-for agent in agents:
-    for explore_only in [False, True]:
-        all_n_steps_before = []
-        for env in envs:
-            env_ = env + '_' + str(explore_only)
-            n_steps_before = []
-            print(all_data[env_].keys())
-            for i in all_data[env_][agent].keys():
-                if 'True' in env_:
-                    to_track = np.array(all_data[env_][agent][str(i)]['true_theory_probas']) > 0.7
-                else:
-                    to_track = np.array(all_data[env_][agent][str(i)]['success'])
-                indexes = np.array([i for i in np.argwhere(to_track).flatten()])
-                if indexes.size > 0:
-                    n_steps_before.append(indexes[0])
-                else:
-                    n_steps_before.append(np.nan)
-            all_n_steps_before.append(n_steps_before)
-        fig, ax = plt.subplots(figsize=(15, 7))
-        data = all_n_steps_before
-        for i_d in range(len(data)):
-            data[i_d] = [dd for dd in data[i_d] if not np.isnan(dd)]
-        plt.boxplot(data, labels=envs)
-        plt.gca().set_ylim(bottom=0)
-        if 'True' in env_:
-            plt.ylabel('steps before self identification')
-            plt.show()
-            #plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{agent}_inference.png')
+# # no mapping inference, logic and contingency + noise
+envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0',
+        'changeAgent-v0', 'changeAgent-shuffle-v0',
+        'changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0',
+        'changeAgent-markovian-7-v0', 'changeAgent-markovian-10-v0', 'changeAgent-markovian-15-v0']
+agents = ['base', 'hierarchical']
+expe_name = 'all_expe'
+explore_only = False
+for env in envs:
+    agent_data = []
+    env_ = env + '_' + str(explore_only)
+    if 'shuffle' in env:
+        stop = 1
+    for agent in agents:
+        env_agent_data = all_data[expe_name][env_][agent]
+        data = get_data_from_agent_and_env(env_agent_data)
+        agent_data.append(data)
+    save_path = plot_dir + expe_name + '/' + env + '/'
+    os.makedirs(save_path, exist_ok=True)
+    to_plotss = ['success']
+    for to_plot in to_plotss:
+        data = [d[to_plot] for d in agent_data]
+        if 'frac' in to_plot:
+            n_detected = None
         else:
-            plt.ylabel('steps before game solved')
-            plt.show()
-            #plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{agent}_solved.png')
-            frac_solved = [len(d)/50 for d in data]
-            fig, ax = plt.subplots(figsize=(15, 7))
-            plt.bar(np.arange(len(frac_solved)), frac_solved)
-            plt.xticks(np.arange(len(frac_solved)), envs)
-            plt.ylabel('fraction solved')
-            plt.show()
-            #plt.savefig(f'{plot_dir}{expe_name}_{plot_name}_{agent}_frac_solved.png')
-    #plt.close('all')
+            n_detected = [d['detected_' + to_plot] for d in agent_data]
+        plot_histograms(data, n_detected, agents, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.3, n_bins=10)
+    plot_best_theory(agent_data, agents, save_path)
+

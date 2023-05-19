@@ -1,39 +1,32 @@
 import numpy as np
-import itertools
-import math
 import scipy
 from copy import deepcopy
-import gym
-import gym_gridworld
-from scipy.stats import beta
 import matplotlib.pyplot as plt
-from hierarchical_scratch import ForwardBackward_BernoulliJump
-from multiprocessing import Pool
-import time
+
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
 
 
-ARGS = dict(n_objs=4,
-            # what to infer
-            infer_mapping=False,
-            infer_switch=False,
-            # priors
-            biased_input_mapping=False,
-            bias_bot_mvt='uniform', # static or uniform
-            p_switch=0.1,
-            # learning strategies and biases
-            likelihood_weight=1,
-            explicit_resetting=False,
-            # exploration
-            explore_only=False,  # if true, the agent only explores and the goal is removed from the env
-            explore_randomly=False,
-            simulation='sampling',  # exhaustive or sampling
-            n_simulations=10,  # number of simulations if sampling
-            # explore-exploit
-            explore_exploit_threshold=0.5, # confidence threshold for agent id
-            verbose=True,
-            )
+# ARGS = dict(n_objs=4,
+#             # what to infer
+#             infer_mapping=False,
+#             infer_switch=False,
+#             # priors
+#             biased_input_mapping=False,
+#             bias_bot_mvt='uniform', # static or uniform
+#             p_switch=0.1,
+#             # learning strategies and biases
+#             likelihood_weight=1,
+#             explicit_resetting=False,
+#             # exploration
+#             explore_only=False,  # if true, the agent only explores and the goal is removed from the env
+#             explore_randomly=False,
+#             simulation='sampling',  # exhaustive or sampling
+#             n_simulations=10,  # number of simulations if sampling
+#             # explore-exploit
+#             explore_exploit_threshold=0.5, # confidence threshold for agent id
+#             verbose=True,
+#             )
 
 class InferSelf:
     def __init__(self, env, args):
@@ -57,8 +50,8 @@ class InferSelf:
         self.setup_theories()
         self.fig = None
         self.noise_mean_prior = self.args['noise_prior']
-        #self.forget_action_mappings 
-        
+        #self.forget_action_mappings
+
 
     # # # # # # # # # # # # # # # #
     # Setting up inference
@@ -125,14 +118,14 @@ class InferSelf:
     # # # # # # # # # # # # # # # #
     def update_theory(self, prev_obs, new_obs, action):
         self.current_posterior_over_theories, p_switch = self.compute_posteriors(prev_obs, new_obs, self.current_posterior_over_theories, action)
-        
+
         #after updating, forget!
         if self.args['forget_action_mapping']:
             self.forget_action_mapping()
-        
+
         self.update_history_posterior_over_agents()
         self.history_posteriors_p_switch.append(p_switch)
-        
+
         self.update_objs_attended_to()
 
         # track smooth posterior over theories and use drops to detect agent switch
@@ -154,7 +147,7 @@ class InferSelf:
     def get_agent_mapping_probs(self, id):
         agent_ids = np.array([i_t for i_t in range(self.n_theories) if self.theories[i_t]['agent_id']==id])
         return self.current_posterior_over_theories[agent_ids], agent_ids
-    
+
     def get_agent_mapping_init_probs(self, id):
         return np.array([p for p, t in zip(self.initial_prior_over_theories,
                                   self.theories) if t['agent_id']==id])
@@ -171,9 +164,6 @@ class InferSelf:
             assert np.all(np.isclose(init_probs.sum(), agent_prob))
             final_probs = self.args['mapping_forgetting_factor'] * init_probs + \
             (1 - self.args['mapping_forgetting_factor']) * probs
-            print(probs)
-            print(init_probs)
-            print(final_probs)
             final_probs = final_probs / final_probs.sum() * agent_prob
             assert np.all(np.isclose(final_probs.sum(), agent_prob))
             self.current_posterior_over_theories[agent_ids] = final_probs
@@ -440,20 +430,22 @@ class InferSelf:
         if mode == 'explore':
             if self.args['explore_randomly']:
                 good_actions_explore = [0, 1, 2, 3]
+                action = np.random.choice(good_actions_explore)
             else:
                 good_actions_explore = self.explore(obs)
             if self.args['explore_only']:
                 action = np.random.choice(good_actions_explore)
                 if self.args['verbose']: print('  explore')
             else:
-                good_actions_exploit = self.exploit(obs)
-                good_actions = set(good_actions_exploit).intersection(set(good_actions_explore))
-                if len(good_actions) > 0:
-                    if self.args['verbose']: print('  explore and exploit')
-                    action = np.random.choice(sorted(good_actions))
-                else:
-                    if self.args['verbose']: print('  explore')
-                    action = np.random.choice(good_actions_explore)
+                if not self.args['explore_randomly']:
+                    good_actions_exploit = self.exploit(obs)
+                    good_actions = set(good_actions_exploit).intersection(set(good_actions_explore))
+                    if len(good_actions) > 0:
+                        if self.args['verbose']: print('  explore and exploit')
+                        action = np.random.choice(sorted(good_actions))
+                    else:
+                        if self.args['verbose']: print('  explore')
+                        action = np.random.choice(good_actions_explore)
         elif mode == 'exploit':
             if self.args['verbose']: print('  exploit')
             good_actions_exploit = self.exploit(obs)
