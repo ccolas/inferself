@@ -50,7 +50,6 @@ def get_args(env, agent, explore_only=False):
         args['infer_mapping'] = False
     else:
         args['infer_mapping'] = True
-
     if agent == 'hierarchical':
         args['infer_switch'] = True
     else:

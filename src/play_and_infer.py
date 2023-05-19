@@ -1,9 +1,9 @@
 from copy import deepcopy
 import pygame
 import gym
-from inferself import InferSelf
+from inferself2 import InferSelf
 
-ENV = 'changeAgent-7-v0'
+ENV = 'changeAgent-shuffle-v0'
 
 ARGS = dict(n_objs=4,
             # what to infer
@@ -24,6 +24,8 @@ ARGS = dict(n_objs=4,
             simulation='sampling',  # exhaustive or sampling
             n_simulations=10,  # number of simulations if sampling
             attention_bias = True,
+            mapping_forgetting_factor=0.5,
+            forget_action_mapping=True,
             n_objs_attended_to=2,
             # explore-exploit
             explore_exploit_threshold=0.5, # confidence threshold for agent id

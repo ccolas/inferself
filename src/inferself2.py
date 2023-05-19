@@ -107,7 +107,6 @@ class InferSelf:
         self.update_objs_attended_to()
 
     def update_objs_attended_to(self):
-
         if self.args['attention_bias']:
             self.objs_attended_to = np.random.choice(range(self.args['n_objs']),
                                                     p=self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories),
@@ -126,6 +125,11 @@ class InferSelf:
     # # # # # # # # # # # # # # # #
     def update_theory(self, prev_obs, new_obs, action):
         self.current_posterior_over_theories, p_switch = self.compute_posteriors(prev_obs, new_obs, self.current_posterior_over_theories, action)
+        
+        #after updating, forget!
+        if self.args['forget_action_mapping']:
+            self.forget_action_mapping()
+        
         self.update_history_posterior_over_agents()
         self.history_posteriors_p_switch.append(p_switch)
         
@@ -143,6 +147,38 @@ class InferSelf:
                     return self.update_theory(prev_obs, new_obs, action)
         self.time_since_last_reset += 1
         if self.args['verbose']: self.print_top(self.theories, self.current_posterior_over_theories)
+
+    def get_agent_theories(self, id):
+        return [t for t in self.theories if t['agent_id']==id]
+
+    def get_agent_mapping_probs(self, id):
+        agent_ids = np.array([i_t for i_t in range(self.n_theories) if self.theories[i_t]['agent_id']==id])
+        return self.current_posterior_over_theories[agent_ids], agent_ids
+    
+    def get_agent_mapping_init_probs(self, id):
+        return np.array([p for p, t in zip(self.initial_prior_over_theories,
+                                  self.theories) if t['agent_id']==id])
+
+    def forget_action_mapping(self):
+        #print(self.current_posterior_over_theories.sum())
+        #assert self.current_posterior_over_theories.sum() == 1
+        for id in range(self.args['n_objs']):
+            theories = self.get_agent_theories(id)
+            probs, agent_ids = self.get_agent_mapping_probs(id)
+            init_probs = self.get_agent_mapping_init_probs(id)
+            agent_prob = probs.sum()
+            init_probs = init_probs / init_probs.sum() * agent_prob
+            assert np.all(np.isclose(init_probs.sum(), agent_prob))
+            final_probs = self.args['mapping_forgetting_factor'] * init_probs + \
+            (1 - self.args['mapping_forgetting_factor']) * probs
+            print(probs)
+            print(init_probs)
+            print(final_probs)
+            final_probs = final_probs / final_probs.sum() * agent_prob
+            assert np.all(np.isclose(final_probs.sum(), agent_prob))
+            self.current_posterior_over_theories[agent_ids] = final_probs
+        # print(self.current_posterior_over_theories.sum())
+        # assert self.current_posterior_over_theories.sum() == 1
 
     def update_history_posterior_over_agents(self):
         posterior_over_agents = [0 for _ in range( self.args['n_objs'])]
