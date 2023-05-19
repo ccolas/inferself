@@ -33,10 +33,22 @@ def plot_histograms(data, n_detected, alg_names, save_path, ylabel=None, alpha=0
         axs = [axs]
     min = np.min([np.min(d) for d in data])
     max = np.max([np.max(d) for d in data])
-    bins = np.arange(min, max, (max - min) / n_bins)
+    if max - min < n_bins:
+        delta = 1
+        bins = np.arange(min, max + 2)
+        xs = np.arange(min, max + 1)
+    else:
+        delta = (max - min) // n_bins + 1
+        bins = np.arange(min, max + 2 * delta, delta)
+        xs = np.arange(min, max + delta , delta)
     for i in range(len(data)):
-        out = axs[0].hist(data[i], bins=bins, color=COLORS[i], alpha=alpha, label=alg_names[i], density=True)
-        axs[0].axvline(np.mean(data[i]), ymin=0, ymax=out[1].max(), color=COLORS[i])
+        ys, _ = np.histogram(data[i], bins=bins - delta / 2)
+        ys = ys.astype(float)
+        ys /= ys.sum()
+        ysmax = np.max(ys)
+        axs[0].bar(xs, ys, color=COLORS[i], alpha=alpha, label=alg_names[i], width=delta)
+        axs[0].axvline(np.mean(data[i]), ymin=0, ymax=ysmax, color=COLORS[i])
+        axs[0].set_xticks(bins)
         if n_detected:
             axs[1].bar([i * 1.2], [n_detected[i]], width=1, color=COLORS[i])
             axs[1].legend(alg_names)
@@ -143,16 +155,15 @@ explore_only = False
 for env in envs:
     agent_data = []
     env_ = env + '_' + str(explore_only)
+    if 'shuffle' in env:
+        stop = 1
     for agent in agents:
         env_agent_data = all_data[expe_name][env_][agent]
         data = get_data_from_agent_and_env(env_agent_data)
         agent_data.append(data)
     save_path = plot_dir + expe_name + '/' + env + '/'
     os.makedirs(save_path, exist_ok=True)
-    if explore_only:
-        to_plotss = ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07', 'frac_infer09']
-    else:
-        to_plotss = ['success']
+    to_plotss = ['success']
     for to_plot in to_plotss:
         data = [d[to_plot] for d in agent_data]
         if 'frac' in to_plot:
@@ -161,112 +172,4 @@ for env in envs:
             n_detected = [d['detected_' + to_plot] for d in agent_data]
         plot_histograms(data, n_detected, agents, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.3, n_bins=10)
     plot_best_theory(agent_data, agents, save_path)
-
-
-# no mapping inference, logic and contingency + noise
-agent = 'base'
-envs = ['logic-shuffle-noisy-v0', 'contingency-shuffle-noisy-v0']
-expe_name = 'base'
-explore_only = True
-env_data = []
-for env in envs:
-    env_ = env + '_' + str(explore_only)
-    env_agent_data = all_data[expe_name][env_][agent]
-    data = get_data_from_agent_and_env(env_agent_data)
-    env_data.append(data)
-
-save_path = plot_dir + 'no_change_infer_mapping' + '/'
-os.makedirs(save_path, exist_ok=True)
-for to_plot in ['success']:
-    data = [d[to_plot] for d in env_data]
-    if 'frac' in to_plot:
-        n_detected = None
-    else:
-        n_detected = [d['detected_' + to_plot] for d in env_data]
-    plot_histograms(data, n_detected, envs, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.4, n_bins=10)
-plot_best_theory(env_data, envs, save_path)
-
-
-# with agent change
-agents = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-envs = ['changeAgent-noisy-v0', 'changeAgent-shuffle-noisy-10-v0']
-expe_name = 'with_agent_change'
-explore_only = True
-for env in envs:
-    agent_data = []
-    env_ = env + '_' + str(explore_only)
-    for agent in agents:
-        env_agent_data = all_data[expe_name][env_][agent]
-        data = get_data_from_agent_and_env(env_agent_data)
-        agent_data.append(data)
-    save_path = plot_dir + expe_name + '/' + env + '/'
-    os.makedirs(save_path, exist_ok=True)
-    for to_plot in ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07', 'frac_infer09']:
-        data = [d[to_plot] for d in agent_data]
-        if 'frac' in to_plot:
-            n_detected = None
-        else:
-            n_detected = [d['detected_' + to_plot] for d in agent_data]
-        plot_histograms(data, n_detected, agents, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.3, n_bins=10)
-    plot_best_theory(agent_data, agents, save_path)
-
-# # with agent change, no noise no shuffle
-envs = ['changeAgent-noisy-7-v0', 'changeAgent-noisy-10-v0', 'changeAgent-noisy-15-v0',
-            'changeAgent-shuffle-noisy-7-v0', 'changeAgent-shuffle-noisy-10-v0', 'changeAgent-shuffle-noisy-15-v0']
-agents = ['base', 'explicit_resetter', 'current_focused_forgetter', 'hierarchical']
-expe_name = 'switch_frequency'
-for explore_only in [False, True]:
-    if explore_only:
-        expe_name = 'switch_frequency'
-    else:
-        expe_name = 'switch_frequency_false'
-    for env in envs:
-        agent_data = []
-        env_ = env + '_' + str(explore_only)
-        for agent in agents:
-            env_agent_data = all_data[expe_name][env_][agent]
-            data = get_data_from_agent_and_env(env_agent_data)
-            agent_data.append(data)
-        save_path = plot_dir + expe_name + '/' + env + '/'
-        os.makedirs(save_path, exist_ok=True)
-        if explore_only:
-            to_plotss = ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07', 'frac_infer09']
-        else:
-            to_plotss = ['success']
-        for to_plot in to_plotss:
-            data = [d[to_plot] for d in agent_data]
-            if 'frac' in to_plot:
-                n_detected = None
-            else:
-                n_detected = [d['detected_' + to_plot] for d in agent_data]
-            plot_histograms(data, n_detected, agents, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.3, n_bins=10)
-        plot_best_theory(agent_data, agents, save_path)
-
-envs = ['changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0']
-agents = ['base_no_noise', 'explicit_resetter_no_noise']
-
-expe_name = 'switch_frequency_no_noise_false'
-explore_only = False
-for env in envs:
-    agent_data = []
-    env_ = env + '_' + str(explore_only)
-    for agent in agents:
-        env_agent_data = all_data[expe_name][env_][agent]
-        data = get_data_from_agent_and_env(env_agent_data)
-        agent_data.append(data)
-    save_path = plot_dir + expe_name + '/' + env + '/'
-    os.makedirs(save_path, exist_ok=True)
-    if explore_only:
-        to_plotss = ['infer05', 'infer07', 'infer09', 'frac_infer05', 'frac_infer07', 'frac_infer09']
-    else:
-        to_plotss = ['success']
-    for to_plot in to_plotss:
-        data = [d[to_plot] for d in agent_data]
-        if 'frac' in to_plot:
-            n_detected = None
-        else:
-            n_detected = [d['detected_' + to_plot] for d in agent_data]
-        plot_histograms(data, n_detected, agents, save_path + to_plot + '.png', ylabel=to_plot, alpha=0.3, n_bins=10)
-    plot_best_theory(agent_data, agents, save_path)
-stop = 1
 

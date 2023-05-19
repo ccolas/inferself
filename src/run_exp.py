@@ -16,12 +16,12 @@ import numpy as np
 
 n_runs = 50
 
-expe_name = 'all_expe'
+expe_name = 'all_expe2'
 envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0',
             'changeAgent-v0', 'changeAgent-shuffle-v0',
             'changeAgent-7-v0', 'changeAgent-10-v0', 'changeAgent-15-v0',
             'changeAgent-markovian-7-v0', 'changeAgent-markovian-10-v0', 'changeAgent-markovian-15-v0']
-agents = ['base', 'hierarchical']
+agents = ['hierarchical']  # 'base',
 explore_exploit = [False]
 
 
@@ -115,6 +115,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
                         action=action,
                         true_self=env.unwrapped.agent_id,
                         all_self_probas=inferself.history_posteriors_over_agents[-1],
+                        p_switch=inferself.history_posteriors_p_switch[-1],
                         true_mapping=env.unwrapped.action_pos_dict,
                         all_mapping_probas=inferself.get_mapping_probas(),
                         true_theory_probas=true_theory_prob,
@@ -136,7 +137,7 @@ def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="/mnt/e8569
     print(f'Running experiment {exp_name}, saving to {data_path}')
 
     keys = ['tpt', 'success', 'obj_pos', 'map', 'action', 'true_self', 'all_self_probas', 'true_mapping', 'all_mapping_probas', 'agent_found',
-            'true_theory_probas', 'true_theory_noise_mean', 'top_theory', 'top_theory_proba', 'agent_change']
+            'true_theory_probas', 'true_theory_noise_mean', 'top_theory', 'top_theory_proba', 'agent_change', 'p_switch']
     # dict with all data
     data = dict()
 

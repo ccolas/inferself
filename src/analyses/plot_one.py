@@ -29,15 +29,16 @@ def plot_one(data, path):
         ind_success = np.argwhere(np.array(data['success'])).flatten()
         if len(ind_success) > 0:
             plt.axvline(ind_success[0], ymin=0, ymax=1, color='red', label='success')
-    ind_inference = np.argwhere(np.array(data['true_theory_probas']) > 0.7).flatten()
-    if len(ind_inference) > 0:
-        plt.axvline(ind_inference[0], ymin=0, ymax=1, color='blue', label='inference')
+    # ind_inference = np.argwhere(np.array(data['true_theory_probas']) > 0.7).flatten()
+    # if len(ind_inference) > 0:
+    #     plt.axvline(ind_inference[0], ymin=0, ymax=1, color='blue', label='inference')
 
     all_self_probas = np.array(data['all_self_probas']).T
     n_agents = len(all_self_probas)
     n_steps = len(all_self_probas[0])
     for i, sp, c in zip(range(n_agents), all_self_probas, COLORS):
         plt.plot(sp, c=c, label=str(i))
+    plt.plot(data['p_switch'], color='k', label='p_switch')
     plt.legend()
     plt.xlim([0, 60])
     plt.ylim([0, 1.05])
