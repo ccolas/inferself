@@ -12,9 +12,8 @@ from multiprocessing import Pool
 import time
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
-class InferSelfNoiseless:
+class InferSelf:
     def __init__(self, env, args):
-        print("NOOO NOIIIISSSEEEE!!!!!!!!!!")
         self.args = args
         self.n_objs = args['n_objs']
         self.env = env
@@ -29,6 +28,7 @@ class InferSelfNoiseless:
         else:
             raise NotImplementedError
         self.history_agent_probas = [[1/self.n_objs for _ in range(self.n_objs)]]
+        self.history_change_probas = []
         self.reset_memory()
         self.reset_theories()
         self.fig = None
@@ -57,6 +57,8 @@ class InferSelfNoiseless:
                                 new_theory = dict(agent_id=agent_id,
                                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
+                                                  noise_params_beta=self.args['noise_prior_beta'].copy(),
+                                                  noise_params_discrete=self.args['noise_prior_discrete'].copy(),
                                                   p_change=self.args['p_change'])
                                 self.theories.append(new_theory)
             else:
@@ -65,6 +67,8 @@ class InferSelfNoiseless:
                 new_theory = dict(agent_id=agent_id,
                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
+                                  noise_params_beta=self.args['noise_prior_beta'].copy(),
+                                  noise_params_discrete=self.args['noise_prior_discrete'].copy(),
                                   p_change = self.args['p_change'])
 
                 self.theories.append(new_theory)
@@ -76,10 +80,29 @@ class InferSelfNoiseless:
         self.prior_probas = self.probas
         self.consistency_record = [[]] * self.n_theories
 
+
     def reset_memory(self):
         self.actions = []  # memory of past actions
         self.obj_pos = dict(zip(range(self.n_objs), [[] for _ in range(self.n_objs)]))  # memory of past movements for each object
 
+
+    def get_beta_plot(self, i_theory):
+        fig, ax = plt.subplots(1, 1)
+        a, b = self.theories[i_theory]['noise_params_beta']
+        x = np.linspace(0.01, 0.99, 100)
+        ax.plot(x, beta.pdf(x, a, b), 'r-', lw=5, alpha=0.6, label='beta pdf')
+        plt.show(block=False)
+
+    def get_noise_mean(self, theory, std=False):
+        if self.args['hierarchical']:
+            return np.sum(self.args['noise_values_discrete'] * theory['noise_params_discrete'])
+        else:
+            noise_params_beta = theory['noise_params_beta']
+            if std:
+                param = 'mv'
+            else:
+                param = 'm'
+            return beta.stats(noise_params_beta[0], noise_params_beta[1], moments=param)
 
     def update_theory(self, prev_obs, new_obs, action):
         # store new info
@@ -87,19 +110,24 @@ class InferSelfNoiseless:
         for o_id in range(self.n_objs):
             self.obj_pos[o_id].append(new_obs['objects'][o_id])
 
-        posteriors = self.compute_posteriors(prev_obs, new_obs, self.probas, action)
+        posteriors, (new_noise_params, new_consistency_record) = self.compute_posteriors(prev_obs, new_obs, self.probas, action, compute_new_noise=True)
+
         self.probas = posteriors
+        for theory, new_n in zip(self.theories, new_noise_params):
+            if self.args['hierarchical']:
+               theory['noise_params_discrete'] = new_n
+            else:
+                theory['noise_params_beta'] = new_n
+        self.consistency_record = new_consistency_record
+
+
+        # for n, theory in zip(new_noise_params, self.theories):
+        #     print(self.get_noise_mean(theory))
 
         self.update_history_agent_probas()  # keep track of probabilities for each agent
         best_theory_id = np.argmax(self.probas)
         best_agent_id = self.theories[best_theory_id]['agent_id']
         data = self.get_smooth_agent_probas()
-
-        if sum(self.probas)==0:
-            self.history_agent_probas.pop(-1)
-            self.reset_theories()
-            return self.update_theory(prev_obs, new_obs, action)
-        #deal w resetting
         if self.args['explicit_resetting']:
             if data.shape[0] > 10 and self.time_since_last_reset > 3:
                 if data[:, best_agent_id][-1] < min(data[:, best_agent_id][-3], data[:, best_agent_id][-2]):  # if drop in belief about agent identity in smooth tracking
@@ -159,11 +187,33 @@ class InferSelfNoiseless:
         return np.all(predicted_pos == new_pos)
 
 
-    def compute_posteriors(self, prev_obs, new_obs, probas, action):
+    def compute_posteriors(self, prev_obs, new_obs, probas, action, compute_new_noise=False):
         # posterior of identity x noise is posterior of identity x posterior(noise | identity)
         # update parameters of the noise distribution for the current theory by incrementing alpha if observation is not consistent
         if self.args['hierarchical']:
-            return self.compute_posteriors_hierarchical(prev_obs, new_obs, probas, action)
+            return self.compute_posteriors_hierarchical(prev_obs, new_obs, probas, action, compute_new_noise)
+
+        new_betas = []
+        new_consistency_record = []
+        if compute_new_noise:
+            if self.args['forget_param']==None:
+                decays = [1]*len(self.consistency_record[0])
+            else:
+                decays = [math.e**(-k/self.args['forget_param']) for k in range(len(self.consistency_record[0])+1, 1, -1)]
+
+            for i_theory, theory in enumerate(self.theories):
+                #now we are tracking consistent and inconsistent obs for each theory
+                obs_consistent =  self.consistency_record[i_theory] + [int(self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action))]
+                new_b = self.args['noise_prior_beta'].copy()
+                #prior obs, prev obs has weight e^-1/forget_param
+                for i, consistent in enumerate(obs_consistent[:-1]):
+                    new_b[consistent] += decays[i]
+                
+                #current obs
+                new_b[obs_consistent[-1]] += 1
+
+                new_consistency_record.append(obs_consistent)
+                new_betas.append(new_b)
 
         # update the posterior for the agent's identity
         posteriors = np.zeros(self.n_theories)
@@ -175,16 +225,21 @@ class InferSelfNoiseless:
             posteriors = posteriors / posteriors.sum()
 
         # make sure we don't get perfect confidence because that prevents any further learning
-        #if np.max(posteriors) > 0.99:
-        #    posteriors[np.argmax(posteriors)] = 0.99
-        #    indexes = np.array([i for i in range(len(posteriors)) if i != np.argmax(posteriors)])
-        #    posteriors[indexes] = 0.01 / len(indexes)
-        return posteriors
+        if np.max(posteriors) > 0.99:
+            posteriors[np.argmax(posteriors)] = 0.99
+            indexes = np.array([i for i in range(len(posteriors)) if i != np.argmax(posteriors)])
+            posteriors[indexes] = 0.01 / len(indexes)
+        return posteriors, (new_betas, new_consistency_record)
 
 
 
     #modify noise to be discrete
-    def compute_posteriors_hierarchical(self, prev_obs, new_obs, probas, action):
+    def compute_posteriors_hierarchical(self, prev_obs, new_obs, probas, action, compute_new_noise=False):
+        #how to update noise given change or no change?
+        no_change_new_noise = []
+        change_new_noise = []
+        new_noise = []
+        new_consistency_record = []
         p_change_by_theory = []
         #update noise assuming no change
         for i_theory, theory in enumerate(self.theories):
@@ -193,7 +248,7 @@ class InferSelfNoiseless:
             #this automatically takes into account possibility of change or no change
             #hchange_no_change_distribdistribow would we update the distrib if we knew there was no change at the last tpt?
             #i think rAlpha will be the same as rGamma for last tpt
-            Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(np.array(obs_consistent)+1, self.args['p_change'], self.args['noise_values_discrete'],
+            Alpha, rGamma, rAlpha, rBeta, JumpPost, Trans = ForwardBackward_BernoulliJump(np.array(obs_consistent)+1, self.args['p_change'],  self.args['noise_values_discrete'],
                                                                                           self.args['noise_prior_discrete'], 'Backward')
             theory['p_change'] = JumpPost[-1]
             p_change_by_theory.append(theory['p_change'])
@@ -202,15 +257,19 @@ class InferSelfNoiseless:
             no_change_distrib = Alpha[:,0,-1]
             if no_change_distrib.sum() > 0:
                 no_change_distrib = no_change_distrib/no_change_distrib.sum()
+            no_change_new_noise.append(no_change_distrib)
             change_distrib = Alpha[:,1,-1]
             if change_distrib.sum() > 0:
                 change_distrib = change_distrib/change_distrib.sum()
+            change_new_noise.append(change_distrib)
+            new_noise.append(rGamma[:,-1])
         p_change_by_theory = np.array(p_change_by_theory)
         #now compute probas of theories
         #first compute posterior if no change, based on noise estimate given no change
         no_change_posteriors = np.zeros(self.n_theories)
         for i_theory, theory in enumerate(self.theories):
             theory2 = theory.copy()
+            theory2['noise_params_discrete'] = no_change_new_noise[i_theory]
             likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
             posterior = probas[i_theory] * (likelihood ** self.args['likelihood_weight'])
             no_change_posteriors[i_theory] = posterior
@@ -219,13 +278,14 @@ class InferSelfNoiseless:
         change_posteriors = np.zeros(self.n_theories)
         for i_theory, theory in enumerate(self.theories):
             theory2 = theory.copy()
+            theory2['noise_params_discrete'] = change_new_noise[i_theory]
             likelihood = self.compute_likelihood(theory2, prev_obs, new_obs, action)
             posterior = self.prior_probas[i_theory] * (likelihood ** self.args['likelihood_weight'])
             change_posteriors[i_theory] = posterior  
         #weighted sum of posteriors in the 2 cases
         nc = np.sum(change_posteriors * p_change_by_theory) + np.sum(no_change_posteriors* (1-p_change_by_theory))
         posteriors = ((change_posteriors * p_change_by_theory) + (no_change_posteriors * (1-p_change_by_theory)))/nc
-        return posteriors
+        return posteriors, (new_noise, new_consistency_record)
 
 
     def compute_likelihood(self, theory, prev_obs, new_obs, action):
@@ -243,9 +303,9 @@ class InferSelfNoiseless:
         new_pos = new_obj_pos[agent_id]
         predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
         if np.all(predicted_pos == new_pos):
-            proba_movements.append(1)
+            proba_movements.append(1 - self.get_noise_mean(theory))
         else:
-            proba_movements.append(0)
+            proba_movements.append(self.get_noise_mean(theory))
         # move the agent in the map
         current_map[prev_pos[0], prev_pos[1]] = 0
         current_map[new_pos[0], new_pos[1]] = 4
@@ -351,13 +411,10 @@ class InferSelfNoiseless:
         max_score = np.max(action_scores)
         return np.argwhere(action_scores == max_score).flatten(), np.argmax(action_scores)
 
-    def get_noise_mean(self, x, std=1):
-        return ""
-
     def estimate_posteriors(self, inputs):
         obs_str, obs_prob, prev_obs, action, probas = inputs
         poss_obs = s2dict(obs_str)
-        new_probas = self.compute_posteriors(prev_obs, poss_obs, probas, action)
+        new_probas, _ = self.compute_posteriors(prev_obs, poss_obs, probas, action)
         info_gain = information_gain(probas, new_probas)
         return info_gain * obs_prob
 
@@ -469,8 +526,20 @@ class InferSelfNoiseless:
             for theory_id in theory_ids:
                 theory = theories[theory_id]
                 agent_id = theory['agent_id']
+                if self.args['hierarchical']:
+                    noise = np.random.choice(self.args['noise_values_discrete'], 1, p=theory['noise_params_discrete'])[0]
+                else:
+                    noise = np.random.beta(*theory['noise_params_beta'])
 
-                action_dir = theory['input_mapping'][action]
+                if np.random.rand() < noise:
+                    candidate_actions = sorted(set(range(5)) - set([action]))
+                    effective_action = np.random.choice(candidate_actions)
+                    if effective_action < 4:
+                        action_dir = theory['input_mapping'][effective_action]
+                    else:
+                        action_dir = np.zeros(2)
+                else:
+                    action_dir = theory['input_mapping'][action]
                 intended_movements = []
                 for obj_id, obj_pos in enumerate(prev_obs['objects']):
                     if obj_id == agent_id:
@@ -531,9 +600,18 @@ class InferSelfNoiseless:
             data = smooth_data
         return data
 
+    def get_top_theory(self):
+        return self.theories[np.argmax(self.probas)]
+
     def render(self, true_agent=None, smooth=5):
         data = np.atleast_2d(np.array(self.history_agent_probas.copy()))
+
         smooth_data = self.get_smooth_agent_probas(smooth=smooth)
+
+        top_theory = self.get_top_theory()
+        self.history_change_probas.append(top_theory['p_change'])
+        print(top_theory['p_change'])
+        data2 = self.history_change_probas
         if self.fig is None:
             self.fig, self.ax = plt.subplots()
             for i, d in zip(range(data.shape[1]), data.T):
@@ -547,6 +625,7 @@ class InferSelfNoiseless:
             plt.show(block=False)
         if true_agent is not None:
             self.ax.scatter(data.shape[0] - 1, 1, c=COLORS[true_agent])
+        self.ax.plot(data2, c="black")
         for i, d in zip(range(data.shape[1]), data.T):
             self.ax.plot(d, c=COLORS[i])
         for i, d in zip(range(data.shape[1]), smooth_data.T):
@@ -585,4 +664,4 @@ def information_gain(p0, p1):
     return scipy.spatial.distance.jensenshannon(p0, p1)
 
 if __name__ == '__main__':
-    inferselfNoiseless = InferSelfNoiseless()
+    inferself = InferSelf()

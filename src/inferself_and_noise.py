@@ -41,7 +41,7 @@ class InferSelf:
         self.n_objs = args['n_objs']
         self.prior_p_switch = args['p_switch']
         self.env = env
-        assert 'noise' not in self.env.__str__()
+        #assert 'noise' not in self.env.__str__()
         
         self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]] # up down left right
         self.directions_str = [l2s(l) for l in self.directions] # convert directions to string form
@@ -56,8 +56,7 @@ class InferSelf:
         self.history_posteriors_p_switch = []
         self.setup_theories()
         self.fig = None
-        self.noise_mean_prior = 0.1
-        self.forget_action_mappings 
+        self.inferred_noise = 0.01
         
 
     # # # # # # # # # # # # # # # #
@@ -83,7 +82,7 @@ class InferSelf:
                                 new_theory = dict(agent_id=agent_id,
                                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
-                                                  # noise_params_beta=self.args['noise_prior_beta'].copy(),
+                                                  noise_params_beta=self.args['noise_prior_beta'].copy(),
                                                   # noise_params_discrete=self.args['noise_prior_discrete'].copy(),
                                                   p_switch=self.args['p_switch'])
                                 self.theories.append(new_theory)
@@ -114,7 +113,7 @@ class InferSelf:
     # Running inference
     # # # # # # # # # # # # # # # #
     def update_theory(self, prev_obs, new_obs, action):
-        self.current_posterior_over_theories, p_switch = self.compute_posteriors(prev_obs, new_obs, self.current_posterior_over_theories, action)
+        self.current_posterior_over_theories, p_switch, self.noise_params_beta = self.compute_posteriors(prev_obs, new_obs, self.current_posterior_over_theories, action)
         self.update_history_posterior_over_agents()
         self.history_posteriors_p_switch.append(p_switch)
 
@@ -139,10 +138,34 @@ class InferSelf:
         assert (np.sum(posterior_over_agents) - 1) < 1e-5
         self.history_posteriors_over_agents.append(posterior_over_agents)
 
+    def is_agent_mvt_consistent(self, theory, prev_obs, new_obs, action):
+        agent_id = theory['agent_id']
+        action_dir = theory['input_mapping'][action]
+        current_map = prev_obs['map'].copy()
+        prev_obj_pos = prev_obs['objects']
+        new_obj_pos = new_obs['objects']
+
+        # compute likelihood of agent movement
+        prev_pos = prev_obj_pos[agent_id]
+        new_pos = new_obj_pos[agent_id]
+        predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
+        return np.all(predicted_pos == new_pos)
+
     def compute_posteriors(self, prev_obs, new_obs, prior_over_theories, action):
         # posterior of identity x noise is posterior of identity x posterior(noise | identity)
+        # but is this true since it's posterior identity|noise?
+        noise_params_beta = []
+        noise_means = []
+        #compute noise given each theory
+        for i, theory in enumerate(self.theories):
+            #is consistent?
+            params = theory['noise_params_beta'].copy()
+            consistent = self.is_agent_mvt_consistent(theory, prev_obs, new_obs, action)
+            params[consistent] += 1
+            noise_params_beta.append(params)
+            noise_means.append(beta.stats(params[0], params[1], moments='m'))
         # update parameters of the noise distribution for the current theory by incrementing alpha if observation is not consistent
-        likelihoods = np.array([self.compute_likelihood(theory, prev_obs, new_obs, action) for theory in self.theories])
+        likelihoods = np.array([self.compute_likelihood(theory, prev_obs, new_obs, action, noise_means[i]) for (i, theory) in enumerate(self.theories)])
 
         if self.args['infer_switch']:
             # get the matrix of non-diagonal elements
@@ -173,7 +196,7 @@ class InferSelf:
             norm_cst = (prob_obs_switch + prob_obs_no_switch).sum()
             prob_obs_no_switch /= norm_cst
             prob_obs_switch /= norm_cst
-            #
+            
             # prob_obs = prob_obs_no_switch + prob_obs_switch
             # prob_theories = prob_theories_switch + prob_theories_no_switch
             # posterior_over_theories = prob_obs * prob_theories
@@ -192,24 +215,17 @@ class InferSelf:
             posterior_p_switch = 0
             posterior_over_theories = prior_over_theories * (likelihoods ** self.args['likelihood_weight'])
 
-        # # update the posterior over theories
-        # posteriors = np.zeros(self.n_theories)
-        # # print(posterior_p_switch)
-        # for i_theory, theory in enumerate(self.theories):
-        #     likelihood = self.compute_likelihood(theory, prev_obs, new_obs, action)
-        #     posterior = ((1 - posterior_p_switch) * prior_over_theories[i_theory] + posterior_p_switch * self.initial_prior_over_theories[i_theory]) \
-        #                 * (likelihood ** self.args['likelihood_weight'])
-        #     posteriors[i_theory] = posterior
-        # posterior_over_theories = posteriors.copy()
-
         # fix probabilities: normalize / reset / clip
+        # this shouldn't happen tho
         if posterior_over_theories.sum() > 0:
             posterior_over_theories = np.asarray(posterior_over_theories).astype('float64')
             posterior_over_theories = posterior_over_theories / posterior_over_theories.sum()  # normalize
 
 
         # make sure we don't get perfect confidence because that prevents any further learning
+        # do we still need this?
         if np.max(posterior_over_theories) > 0.99:
+            print("here!!!!")
             posterior_over_theories[np.argmax(posterior_over_theories)] = 0.99
             indexes = np.array([i for i in range(len(posterior_over_theories)) if i != np.argmax(posterior_over_theories)])
             posterior_over_theories[indexes] = 0.01 / len(indexes)
@@ -219,9 +235,9 @@ class InferSelf:
         posterior_over_theories = fix_p(posterior_over_theories)
         if posterior_over_theories.sum() != 1:
             stop = 1
-        return posterior_over_theories, posterior_p_switch
+        return posterior_over_theories, posterior_p_switch, noise_params_beta
 
-    def compute_likelihood(self, theory, prev_obs, new_obs, action):
+    def compute_likelihood(self, theory, prev_obs, new_obs, action, noise):
         # probability of data (object positions) given theory and action
         # product of the probabilities of each of the observed movements
         agent_id = theory['agent_id']
@@ -236,9 +252,11 @@ class InferSelf:
         new_pos = new_obj_pos[agent_id]
         predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
         if np.all(predicted_pos == new_pos):
-            proba_movements.append(1 - self.get_noise_mean(theory))
+            consistent = 1
+            proba_movements.append(1 - noise)
         else:
-            proba_movements.append(self.get_noise_mean(theory))
+            consistent = 0
+            proba_movements.append(noise)
         # move the agent in the map
         current_map[prev_pos[0], prev_pos[1]] = 0
         current_map[new_pos[0], new_pos[1]] = 4
@@ -261,7 +279,7 @@ class InferSelf:
                 # add movement of that object in the map
                 current_map[prev_pos[0], prev_pos[1]] = 0
                 current_map[new_pos[0], new_pos[1]] = 8
-        return np.prod(proba_movements)
+        return np.prod(proba_movements), consistent
 
 
     # # # # # # # # # # # #
@@ -286,7 +304,7 @@ class InferSelf:
     def estimate_info_gain(self, inputs):
         obs_str, obs_prob, prev_obs, action, probas = inputs
         poss_obs = s2dict(obs_str)
-        new_probas, p_switche = self.compute_posteriors(prev_obs, poss_obs, probas, action)
+        new_probas, p_switche, noise_params_beta = self.compute_posteriors(prev_obs, poss_obs, probas, action)
         info_gain = information_gain(probas, new_probas)
         return info_gain * obs_prob
 
@@ -300,7 +318,20 @@ class InferSelf:
         for theory_id in theory_ids:
             theory = theories[theory_id]
             agent_id = theory['agent_id']
-            action_dir = theory['input_mapping'][action]
+            # if self.args['infer_switch']:
+            #     noise = np.random.choice(self.args['noise_values_discrete'], 1, p=theory['noise_params_discrete'])[0]
+            # else:
+            #     noise = np.random.beta(*theory['noise_params_beta'])
+            # noise = False
+            # if np.random.rand() < noise:
+            #     candidate_actions = sorted(set(range(5)) - set([action]))
+            #     effective_action = np.random.choice(candidate_actions)
+            #     if effective_action < 4:
+            #         action_dir = theory['input_mapping'][effective_action]
+            #     else:
+            #         action_dir = np.zeros(2)
+            # else: 
+            #     action_dir = theory['input_mapping'][action]
             intended_movements = []
             for obj_id, obj_pos in enumerate(prev_obs['objects']):
                 if obj_id == agent_id:
@@ -415,7 +446,7 @@ class InferSelf:
     # utilities
     # # # # # # # # # # # #
     def get_noise_mean(self, theory):
-        return self.noise_mean_prior
+        return self.inferred_noise
 
     def next_obj_pos(self, prev_pos, action_dir, current_map, agent):
         predicted_pos = prev_pos + action_dir

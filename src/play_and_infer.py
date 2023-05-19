@@ -1,9 +1,9 @@
 from copy import deepcopy
 import pygame
 import gym
-from inferself2 import InferSelf
+from inferself import InferSelf
 
-ENV = 'changeAgent-markovian-7-v0'
+ENV = 'changeAgent-7-v0'
 
 ARGS = dict(n_objs=4,
             # what to infer
@@ -16,11 +16,15 @@ ARGS = dict(n_objs=4,
             # learning strategies and biases
             likelihood_weight=1,
             explicit_resetting=False,
+            #noise_prior_beta=[1, 15],
+            noise_prior = 0.01,
             # exploration
             explore_only=False,  # if true, the agent only explores and the goal is removed from the env
             explore_randomly=False,
             simulation='sampling',  # exhaustive or sampling
             n_simulations=10,  # number of simulations if sampling
+            attention_bias = True,
+            n_objs_attended_to=2,
             # explore-exploit
             explore_exploit_threshold=0.5, # confidence threshold for agent id
             verbose=True,

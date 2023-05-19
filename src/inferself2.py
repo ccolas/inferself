@@ -56,6 +56,8 @@ class InferSelf:
         self.history_posteriors_p_switch = []
         self.setup_theories()
         self.fig = None
+        self.noise_mean_prior = self.args['noise_prior']
+        #self.forget_action_mappings 
         
 
     # # # # # # # # # # # # # # # #
@@ -102,6 +104,17 @@ class InferSelf:
             self.initial_prior_over_theories[np.arange(0, self.n_theories, self.n_theories // 4)] *= 50
             self.initial_prior_over_theories /= self.initial_prior_over_theories.sum()
         self.reset_prior_over_theories()
+        self.update_objs_attended_to()
+
+    def update_objs_attended_to(self):
+
+        if self.args['attention_bias']:
+            self.objs_attended_to = np.random.choice(range(self.args['n_objs']),
+                                                    p=self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories),
+                                                    size=self.args['n_objs_attended_to'],
+                                                    replace=False)
+        else:
+            self.objs_attended_to = range(self.args['n_objs'])
 
     def reset_prior_over_theories(self):
         self.time_since_last_reset = 0
@@ -115,7 +128,8 @@ class InferSelf:
         self.current_posterior_over_theories, p_switch = self.compute_posteriors(prev_obs, new_obs, self.current_posterior_over_theories, action)
         self.update_history_posterior_over_agents()
         self.history_posteriors_p_switch.append(p_switch)
-
+        
+        self.update_objs_attended_to()
 
         # track smooth posterior over theories and use drops to detect agent switch
         if self.args['explicit_resetting']:
@@ -233,29 +247,32 @@ class InferSelf:
         prev_pos = prev_obj_pos[agent_id]
         new_pos = new_obj_pos[agent_id]
         predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
-        if np.all(predicted_pos == new_pos):
-            proba_movements.append(1 - self.get_noise_mean(theory))
-        else:
-            proba_movements.append(self.get_noise_mean(theory))
+        if agent_id in self.objs_attended_to:
+            if np.all(predicted_pos == new_pos):
+                proba_movements.append(1 - self.get_noise_mean(theory))
+            else:
+                proba_movements.append(self.get_noise_mean(theory))
         # move the agent in the map
         current_map[prev_pos[0], prev_pos[1]] = 0
         current_map[new_pos[0], new_pos[1]] = 4
 
+
         for obj_id, prev_pos, new_pos in zip(range( self.args['n_objs']), prev_obj_pos, new_obj_pos):
             if obj_id != agent_id:
                 mvt = new_pos - prev_pos  # observed movement
-                if np.sum(np.abs(mvt)) > 0:  # actual movement
-                    # the likelihood is the prior for that object and that movement
-                    proba_movements.append(self.prior_npc_mvt[obj_id][self.directions_str.index(l2s(mvt))])
-                else: # if no actual movement, then it might be because the bot didn't move or because it was blocked
-                    # let's sum the prior probabilities of each movement when these movements are blocked by collisions
-                    probas_to_sum = [self.prior_npc_mvt[obj_id][-1]]  # start with the proba of no movement
-                    for dir in self.directions:
-                        dir_prior = self.prior_npc_mvt[obj_id][self.directions_str.index(l2s(dir))]
-                        if dir_prior > 0:
-                            if np.all(self.next_obj_pos(prev_pos, dir, current_map, False) == new_pos):  # if the expected movement results in new pos
-                                probas_to_sum.append(dir_prior)
-                    proba_movements.append(np.sum(probas_to_sum))
+                if obj_id in self.objs_attended_to:
+                    if np.sum(np.abs(mvt)) > 0:  # actual movement
+                        # the likelihood is the prior for that object and that movement
+                        proba_movements.append(self.prior_npc_mvt[obj_id][self.directions_str.index(l2s(mvt))])
+                    else: # if no actual movement, then it might be because the bot didn't move or because it was blocked
+                        # let's sum the prior probabilities of each movement when these movements are blocked by collisions
+                        probas_to_sum = [self.prior_npc_mvt[obj_id][-1]]  # start with the proba of no movement
+                        for dir in self.directions:
+                            dir_prior = self.prior_npc_mvt[obj_id][self.directions_str.index(l2s(dir))]
+                            if dir_prior > 0:
+                                if np.all(self.next_obj_pos(prev_pos, dir, current_map, False) == new_pos):  # if the expected movement results in new pos
+                                    probas_to_sum.append(dir_prior)
+                        proba_movements.append(np.sum(probas_to_sum))
                 # add movement of that object in the map
                 current_map[prev_pos[0], prev_pos[1]] = 0
                 current_map[new_pos[0], new_pos[1]] = 8
@@ -298,24 +315,20 @@ class InferSelf:
         for theory_id in theory_ids:
             theory = theories[theory_id]
             agent_id = theory['agent_id']
-            # if self.args['infer_switch']:
-            #     noise = np.random.choice(self.args['noise_values_discrete'], 1, p=theory['noise_params_discrete'])[0]
-            # else:
-            #     noise = np.random.beta(*theory['noise_params_beta'])
-            # noise = False
-            # if np.random.rand() < noise:
-            #     candidate_actions = sorted(set(range(5)) - set([action]))
-            #     effective_action = np.random.choice(candidate_actions)
-            #     if effective_action < 4:
-            #         action_dir = theory['input_mapping'][effective_action]
-            #     else:
-            #         action_dir = np.zeros(2)
-            # else:
-            #     action_dir = theory['input_mapping'][action]
             action_dir = theory['input_mapping'][action]
             intended_movements = []
             for obj_id, obj_pos in enumerate(prev_obs['objects']):
                 if obj_id == agent_id:
+                    #should sample this noise value?
+                    if np.random.rand() < self.get_noise_mean(theory):
+                        candidate_actions = sorted(set(range(5)) - set([action]))
+                        effective_action = np.random.choice(candidate_actions)
+                        if effective_action < 4:
+                            action_dir = theory['input_mapping'][effective_action]
+                        else:
+                            action_dir = np.zeros(2)
+                    else:
+                        action_dir = theory['input_mapping'][action]
                     intended_movements.append(action_dir)
                 else:
                     dirs = self.directions + [[0, 0]]
@@ -381,7 +394,7 @@ class InferSelf:
         if enforce_mode is None:
             # decide whether to explore or exploit
             posterior_over_agents = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
-            if sorted(posterior_over_agents.items(), key=lambda x: x[1], reverse=True)[0][1] >= self.args['explore_exploit_threshold']:
+            if np.max(posterior_over_agents) >= self.args['explore_exploit_threshold']:
                 mode = "exploit"
             else:
                 mode = "explore"
@@ -417,7 +430,7 @@ class InferSelf:
     # utilities
     # # # # # # # # # # # #
     def get_noise_mean(self, theory):
-        return 0
+        return self.noise_mean_prior
 
     def next_obj_pos(self, prev_pos, action_dir, current_map, agent):
         predicted_pos = prev_pos + action_dir
@@ -458,10 +471,10 @@ class InferSelf:
         return smooth_posterior_over_theories
 
     def get_posterior_over_agents(self, theories, probs):
-        agent_probs = {}
+        agent_probs = np.zeros(self.args['n_objs'])
         for i, t in enumerate(theories):
             id = t['agent_id']
-            agent_probs[id] = agent_probs.get(id, 0) + probs[i]
+            agent_probs[id] += probs[i]
         return agent_probs
 
     def print_top(self, theories, probs):
