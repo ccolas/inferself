@@ -13,15 +13,14 @@ import numpy as np
 # change explore so that we also figure out the action mapping?
 # random exploration as one version
 
+n_runs = 100
 
-n_runs = 50
-
-expe_name = 'all_expe'
-envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-v0', 'changeAgent-shuffle-v0', 'changeAgent-7-v0', 'changeAgent-markovian-7-v0']
-agents = ['hierarchical', 'hierarchical_random_explo', 'hierarchical_attention_bias_1', 'hierarchical_attention_bias_2',
-          'hierarchical_forget_action_mapping', 'hierarchical_prior_action_mapping', 'hierarchical_forget_action_mapping_attention_bias_2']  # 'base',
+expe_name = 'final_exp'
+#envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-v0', 'changeAgent-shuffle-v0', 'changeAgent-7-v0', 'changeAgent-markovian-7-v0']
+envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-7-v0']
+agents = ['attention_bias_1', 'forget_action_mapping_attention_bias_1']#, 'noisy_base', 'attention_bias_1', 'forget_action_mapping_attention_bias_1', 
+#agents = ['base', 'no_switch', 'random_explo', 'attention_bias_1', 'attention_bias_2', 'forget_action_mapping', 'prior_action_mapping', 'forget_action_mapping_attention_bias_2'] 
 explore_exploit = [False]
-
 
 def get_args(env, agent, explore_only=False):
     args = dict(n_objs=4,
@@ -29,9 +28,10 @@ def get_args(env, agent, explore_only=False):
                 infer_mapping=False,
                 infer_switch=False,
                 # priors
-                biased_input_mapping=False,
+                biased_action_mapping=False,
+                biased_action_mapping_factor=100,
                 bias_bot_mvt='uniform',  # static or uniform
-                p_switch=0.1,
+                p_switch=0.01,
                 # learning strategies and biases
                 likelihood_weight=1,
                 explicit_resetting=False,
@@ -42,10 +42,11 @@ def get_args(env, agent, explore_only=False):
                 explore_randomly=False,
                 simulation='sampling',  # exhaustive or sampling
                 n_simulations=10,  # number of simulations if sampling
+                uniform_attention_bias=False,
                 attention_bias=False,
-                mapping_forgetting_factor=0.5,
+                mapping_forgetting_factor=0.25,
                 forget_action_mapping=False,
-                n_objs_attended_to=2,
+                n_objs_attended_to=4,
                 # explore-exploit
                 explore_exploit_threshold=0.5,  # confidence threshold for agent id
                 verbose=False,
@@ -54,13 +55,16 @@ def get_args(env, agent, explore_only=False):
         args['infer_mapping'] = False
     else:
         args['infer_mapping'] = True
-    if 'hierarchical' in agent:
-        args['infer_switch'] = True
-    else:
+    if 'no_switch' in agent:
         args['infer_switch'] = False
+    else:
+        args['infer_switch'] = True
 
     if 'random_explo' in agent:
         args['explore_randomly'] = True
+
+    if 'rand_attention_bias' in agent:
+        args['uniform_attention_bias'] = True
 
     if 'attention_bias' in agent:
         args['attention_bias'] = True
@@ -68,15 +72,15 @@ def get_args(env, agent, explore_only=False):
 
     if 'forget_action_mapping' in agent:
         args['forget_action_mapping'] = True
-        args['biased_input_mapping'] = True
+        args['biased_action_mapping'] = True
     else:
         args['forget_action_mapping'] = False
-        args['biased_input_mapping'] = False
+        args['biased_action_mapping'] = False
 
     if 'prior_action_mapping' in agent:
-        args['biased_input_mapping'] = True
+        args['biased_action_mapping'] = True
     else:
-        args['biased_input_mapping'] = False
+        args['biased_action_mapping'] = False
     return args
 
 
@@ -95,6 +99,11 @@ def get_prob_of_true(s, true_agent, true_mapping):
 def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     # run exp for this env/arg set
     args = get_args(env_name, agent, explore_only)
+    if 'changeAgent' in env_name:
+        args['p_switch'] = 1/7
+    else:
+        args['p_switch'] = 0.01
+
     env = gym.make(env_name)
     data = dict(zip(keys, [[] for _ in range(len(keys))]))
     if args['explore_only']:
@@ -152,8 +161,8 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     return data
 
 
-def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/", overwrite=False,
-                   time_limit=150):
+def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="output/", overwrite=False,
+                   time_limit=200):
     data_path = save_dir + exp_name + '.pkl'
     print(f'Running experiment {exp_name}, saving to {data_path}')
 
@@ -178,14 +187,16 @@ def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="/mnt/e8569
             for i_agent, agent in enumerate(agents):
                 print(f"    Agent: {agent} ({i_agent + 1} / {len(agents)})")
                 if agent not in data[expe_name][env_name_dict].keys(): data[expe_name][env_name_dict][agent] = dict()
+                
+                data[expe_name][env_name_dict][agent]["args"] = get_args(env_name, agent, explore_only)
                 for i in range(n_runs):
                     print(f'      Seed {i + 1} / {n_runs}')
-                    if str(i) not in data[expe_name][env_name_dict][agent].keys():
-                        data[expe_name][env_name_dict][agent][str(i)] = run_agent_in_env(env_name, agent, explore_only, keys, time_limit)
-                        with open(data_path, 'wb') as f:
-                            pickle.dump(data, f)
+                    #if str(i) not in data[expe_name][env_name_dict][agent].keys():
+                    data[expe_name][env_name_dict][agent][str(i)] = run_agent_in_env(env_name, agent, explore_only, keys, time_limit)
+                    with open(data_path, 'wb') as f:
+                        pickle.dump(data, f)
 
 
 if __name__ == '__main__':
-    run_experiment(exp_name=expe_name, envs=envs, agents=agents, explore_exploit=explore_exploit)
+    run_experiment(exp_name=expe_name, envs=envs, agents=agents, explore_exploit=explore_exploit, overwrite=False)
 

@@ -6,8 +6,8 @@ import numpy as np
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
 
-save_dir = "/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/experiments/"
-plot_dir = "/mnt/e85692fd-9cbc-4a8d-b5c5-9252bd9a34fd/Research/Scratch/inferself/data/plots/plot_all/"
+save_dir = "../output/"
+plot_dir = ""
 
 # compile all data
 all_data = dict()

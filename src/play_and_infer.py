@@ -2,17 +2,25 @@ from copy import deepcopy
 import pygame
 import gym
 from inferself import InferSelf
+from gym_gridworld import __init__
+import warnings
+warnings.filterwarnings("ignore") 
 
-ENV = 'changeAgent-shuffle-v0'
+
+ENV = 'logic-v0'
+#ENV = 'contingency-v0'
+#ENV = 'contingency-shuffle-v0' #infer mapping true
+#ENV = 'changeAgent-7-v0'
 
 ARGS = dict(n_objs=4,
             # what to infer
-            infer_mapping=True,
+            infer_mapping=False,
             infer_switch=True,
             # priors
-            biased_input_mapping=False,
+            biased_action_mapping=False,
+            biased_action_mapping_factor=100,
             bias_bot_mvt='uniform', # static or uniform
-            p_switch=0.1,
+            p_switch=0.01,
             # learning strategies and biases
             likelihood_weight=1,
             explicit_resetting=False,
@@ -23,10 +31,10 @@ ARGS = dict(n_objs=4,
             explore_randomly=False,
             simulation='sampling',  # exhaustive or sampling
             n_simulations=10,  # number of simulations if sampling
-            attention_bias=True,
+            attention_bias=False,
             mapping_forgetting_factor=0.5,
-            forget_action_mapping=True,
-            n_objs_attended_to=2,
+            forget_action_mapping=False,
+            n_objs_attended_to=4,
             # explore-exploit
             explore_exploit_threshold=0.5, # confidence threshold for agent id
             verbose=True,
@@ -34,7 +42,7 @@ ARGS = dict(n_objs=4,
 
 def play_and_infer(env=ENV):
     screen = pygame.display.set_mode((300, 300))
-
+    print(env)
     env = gym.make(env)
     prev_obs, prev_info = env.reset()
     env.render(None)
@@ -48,6 +56,7 @@ def play_and_infer(env=ENV):
     # else:
     inferself = InferSelf(env=env,
                           args=args)
+    inferself.render(true_agent=env.unwrapped.agent_id)
 
     running = True
     step = 0
