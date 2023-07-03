@@ -21,9 +21,9 @@ class GridworldEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, game_type, noise=0, no_goal=False, shuffle_keys=False, change_agent_every=10, oneswitch=False, markovian=False, p_switch=0):
-        assert game_type in ['logic', 'logic_extended', 'logic_extended_h',
-                             'contingency', 'contingency_extended',
-                             'change_agent', 'change_agent_extended', 'change_agent_extended_1', 'change_agent_extended_2']
+        #assert game_type in ['logic', 'logic_extended', 'logic_extended_h',
+        #                     'contingency', 'contingency_extended',
+        #                     'change_agent', 'change_agent_extended', 'change_agent_extended_1', 'change_agent_extended_2']
 
         self.game_type = game_type
         self._seed = None
@@ -44,15 +44,11 @@ class GridworldEnv(gym.Env):
         self.oneswitch = oneswitch
 
         layout_path = os.path.dirname(os.path.realpath(__file__)) + '/' + self.game_type + '/'
-        self.possible_layouts_paths = [layout_path + f for f in os.listdir(layout_path)]
-
+        self.possible_layouts_paths = [layout_path + f for f in os.listdir(layout_path) if 'new' not in f]
+        #self.possible_layouts_paths = [layout_path + f for f in os.listdir(layout_path) if 'new' in f and '2' in f]
         self.obs_shape = [128, 128, 3]  # observation space shape
         self.observation_space = spaces.Box(low=0, high=1, shape=self.obs_shape, dtype=np.float32)
 
-        if 'logic' in self.game_type:
-            self.agent_start_locs = [[1, 1], [1, 7], [7, 1], [7, 7]]
-        elif 'contingency' in self.game_type or 'change_agent' in self.game_type:
-            self.agent_start_locs = [[6, 6], [6, 14], [14, 6], [14, 14]]
         self.fig = None
         self.reset()
 
@@ -64,14 +60,15 @@ class GridworldEnv(gym.Env):
         with open(grid_map_path, 'r') as f:
             grid_map = f.readlines()
         self.start_grid_map = np.array([[int(el) for el in line.replace('\n', '').split(' ') ] for line in grid_map])
+
+        self.candidates_pos = self.get_pos(of_what='candidates', map=self.start_grid_map)
+        self.n_objs = len(self.candidates_pos)
         # sample agent location
-        agent_pos = self.agent_start_locs[np.random.randint(4)]
-        self.start_grid_map[agent_pos[0], agent_pos[1]] = 4  # add it to the map
+        self_pos = self.candidates_pos[np.random.randint(4)]
+        self.start_grid_map[self_pos[0], self_pos[1]] = 4  # add it to the map
 
         # get object positions
         self.goal_pos = self.get_pos(of_what='goal', map=self.start_grid_map)
-        self_pos = self.get_pos(of_what='self', map=self.start_grid_map)
-        self.candidates_pos = self.get_pos(of_what='candidates', map=self.start_grid_map)
         #got idx out of bounds error
         #should self pos only have 1 option?
         self.agent_id = np.argwhere([np.all(cpos == self_pos) for cpos in self.candidates_pos]).flatten()[0]
@@ -132,6 +129,8 @@ class GridworldEnv(gym.Env):
     def seed(self, seed):
         self._seed = seed
         np.random.seed(self._seed)
+        print(self._seed)
+        print(seed)
 
     def step(self, action):
         self.step_counter += 1
@@ -152,7 +151,13 @@ class GridworldEnv(gym.Env):
         if agent: empty = [0, 3]
         else: empty = [0]
         if map is None: map = self.current_grid_map
+        #check for out of bounds
+        if (int(pos[0]) < 0) or (int(pos[0]) >= np.shape(map)[0]) or (int(pos[1]) < 0) or (int(pos[1]) >= np.shape(map)[1]):
+            return False
         return map[int(pos[0]), int(pos[1])] in empty
+
+    def agent_at_goal(self, map):
+        return not(np.any(map == 3))
 
     def step_logic(self, action):
         action = int(action)

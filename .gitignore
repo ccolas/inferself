@@ -119,6 +119,7 @@ venv.bak/
 *.csv
 *.npy
 *.jbl
+*.pkl
 
 src/data/expe/*
 src/data/lstm_checkpoints/*

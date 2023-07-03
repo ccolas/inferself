@@ -50,7 +50,6 @@ end
 @gen function generative_model_no_switch(initial_map::Array{Int}, actions::Array{Int64}, noisy::Bool, infer_action_mapping::Bool,
     switch::Bool, infer_proba_switch::Bool)
 
-
     n_steps = length(actions)
     cartesian_indexes = findall(x -> x==8, initial_map);
     n_candidates = length(cartesian_indexes)

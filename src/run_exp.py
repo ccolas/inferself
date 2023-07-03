@@ -4,26 +4,29 @@ import os
 import gym
 import gym_gridworld
 from inferself import InferSelf
+from foil_inferself import InferSelfFoil
 # from inferself_noiseless import InferSelfNoiseless
 import csv
 import numpy as np
 
-# TODO: also track prob of correct action mapping?
-#      slightly confusing bc we don't try to get this exactly right
-# change explore so that we also figure out the action mapping?
-# random exploration as one version
-
 n_runs = 100
 
-expe_name = 'final_exp'
-#envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-v0', 'changeAgent-shuffle-v0', 'changeAgent-7-v0', 'changeAgent-markovian-7-v0']
+expe_name = 'comparison_exp'
 envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-7-v0']
-agents = ['attention_bias_1', 'forget_action_mapping_attention_bias_1']#, 'noisy_base', 'attention_bias_1', 'forget_action_mapping_attention_bias_1', 
-#agents = ['base', 'no_switch', 'random_explo', 'attention_bias_1', 'attention_bias_2', 'forget_action_mapping', 'prior_action_mapping', 'forget_action_mapping_attention_bias_2'] 
+for nm in ['logic', 'contingency', 'contingency-shuffle', 'changeAgent-7']:
+    envs.append(nm + '-5-easy')
+    envs.append(nm + '-5-hard')
+    envs.append(nm + '-8-easy')
+    envs.append(nm + '-8-hard')
+    envs.append(nm + '-12-easy')
+    envs.append(nm + '-12-hard')
+agents = ['base', 'foil']
+#agents = ['base', 'rand_attention_bias_1', 'forget_action_mapping_rand_attention_bias_1']
 explore_exploit = [False]
 
 def get_args(env, agent, explore_only=False):
     args = dict(n_objs=4,
+                max_steps=2,
                 # what to infer
                 infer_mapping=False,
                 infer_switch=False,
@@ -47,10 +50,13 @@ def get_args(env, agent, explore_only=False):
                 mapping_forgetting_factor=0.25,
                 forget_action_mapping=False,
                 n_objs_attended_to=4,
+                is_foil=False,
                 # explore-exploit
                 explore_exploit_threshold=0.5,  # confidence threshold for agent id
                 verbose=False,
                 )
+    if 'foil' in agent:
+        args['is_foil'] = True
     if 'shuffle' not in env:
         args['infer_mapping'] = False
     else:
@@ -110,11 +116,11 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
         env.unwrapped.no_goal = True
     prev_obs, prev_info = env.reset()
     args.update(n_objs=env.n_candidates)
-    # if args['no_noise_inference']:
-    #     inferself = InferSelfNoiseless(env=env,
-    #                           args=args)
-    # else:
-    inferself = InferSelf(env=env,
+    if args['is_foil']:
+         inferself = InferSelfFoil(env=env,
+                               args=args)
+    else:
+        inferself = InferSelf(env=env,
                           args=args)
     previous_agent = None
     for t in range(time_limit):
@@ -123,10 +129,10 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
         if 'oneswitch' in env_name:
             if t < 30:
                 mode = 1
-        action = inferself.get_action(prev_info['semantic_state'], enforce_mode=mode)
+        action, action_mode = inferself.get_action(prev_info['semantic_state'], enforce_mode=mode)
         obs, rew, done, info = env.step(action)
         inferself.update_theory(prev_info['semantic_state'], info['semantic_state'], action)
-        theory, proba = inferself.get_best_theory(get_proba=True)
+
         # did the agent change?
         if previous_agent != env.unwrapped.agent_id and t > 0:
             change = True
@@ -134,15 +140,38 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
             change = False
         previous_agent = env.unwrapped.agent_id
 
-        # obs contains object positions, goal pos,
-        # true agent id, predicted agent, prob of true agent, prob of true mapping, prob of top theory
-        true_theory_prob, noise_mean = get_prob_of_true(inferself, env.unwrapped.agent_id, env.unwrapped.action_pos_dict)
-        new_data = dict(tpt=t,
+
+        if args['is_foil']:
+            new_data = dict(tpt=t,
                         agent_change=change,
                         success=info["success"],
                         obj_pos=info['semantic_state']["objects"],
                         map=info['semantic_state']["map"].flatten(),
                         action=action,
+                        true_self=env.unwrapped.agent_id,
+                        all_self_probas=None,
+                        mode=action_mode,
+                        p_switch=None,
+                        true_mapping=env.unwrapped.action_pos_dict,
+                        all_mapping_probas=None,
+                        true_theory_probas=None,
+                        agent_found=None,
+                        true_theory_noise_mean=None,
+                        top_theory=None,
+                        top_theory_proba=None)
+        else:
+            theory, proba = inferself.get_best_theory(get_proba=True)
+            # obs contains object positions, goal pos,
+            # true agent id, predicted agent, prob of true agent, prob of true mapping, prob of top theory
+            true_theory_prob, noise_mean = get_prob_of_true(inferself, env.unwrapped.agent_id, env.unwrapped.action_pos_dict)
+        
+            new_data = dict(tpt=t,
+                        agent_change=change,
+                        success=info["success"],
+                        obj_pos=info['semantic_state']["objects"],
+                        map=info['semantic_state']["map"].flatten(),
+                        action=action,
+                        mode=action_mode,
                         true_self=env.unwrapped.agent_id,
                         all_self_probas=inferself.history_posteriors_over_agents[-1],
                         p_switch=inferself.history_posteriors_p_switch[-1],
@@ -153,6 +182,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
                         true_theory_noise_mean=noise_mean,
                         top_theory=theory,
                         top_theory_proba=proba)  # which theory is correct? get prob of that theory
+        
         for k in new_data.keys():
             data[k].append(new_data[k])
         prev_info = deepcopy(info)
@@ -167,7 +197,7 @@ def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="output/", 
     print(f'Running experiment {exp_name}, saving to {data_path}')
 
     keys = ['tpt', 'success', 'obj_pos', 'map', 'action', 'true_self', 'all_self_probas', 'true_mapping', 'all_mapping_probas', 'agent_found',
-            'true_theory_probas', 'true_theory_noise_mean', 'top_theory', 'top_theory_proba', 'agent_change', 'p_switch']
+            'true_theory_probas', 'true_theory_noise_mean', 'top_theory', 'top_theory_proba', 'agent_change', 'p_switch', 'mode']
     # dict with all data
     data = dict()
 

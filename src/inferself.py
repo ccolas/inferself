@@ -2,12 +2,12 @@ import numpy as np
 import scipy
 from copy import deepcopy
 import matplotlib.pyplot as plt
+import heapq
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
 
 #make sure we don't move once we're at the goal?
-
 # ARGS = dict(n_objs=4,
 #             # what to infer
 #             infer_mapping=False,
@@ -32,21 +32,21 @@ COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e3
 class InferSelf:
     def __init__(self, env, args):
         self.args = args
-        self.n_objs = args['n_objs']
         self.prior_p_switch = args['p_switch']
         self.env = env
+        self.n_objs = self.env.n_objs
         assert 'noise' not in self.env.__str__()
         
         self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]] # up down left right
         self.directions_str = [l2s(l) for l in self.directions] # convert directions to string form
 
         if self.args['bias_bot_mvt'] == 'static':
-            self.prior_npc_mvt = np.tile(np.append(np.zeros(len(self.directions)), 1), (self.args['n_objs'], 1))
+            self.prior_npc_mvt = np.tile(np.append(np.zeros(len(self.directions)), 1), (self.n_objs, 1))
         elif self.args['bias_bot_mvt'] == 'uniform':
-            self.prior_npc_mvt = np.full((self.args['n_objs'], len(self.directions) + 1), 1 / (len(self.directions) + 1))
+            self.prior_npc_mvt = np.full((self.n_objs, len(self.directions) + 1), 1 / (len(self.directions) + 1))
         else: raise NotImplementedError
 
-        self.history_posteriors_over_agents = [[1 /  self.args['n_objs'] for _ in range( self.args['n_objs'])]]  # fill history with prior on agent identity
+        self.history_posteriors_over_agents = [[1 /  self.n_objs for _ in range( self.n_objs)]]  # fill history with prior on agent identity
         self.history_posteriors_p_switch = []
         self.setup_theories()
         self.fig = None
@@ -61,7 +61,7 @@ class InferSelf:
         self.theories = []
         dirs = self.directions_str.copy()
         # list all theories
-        for agent_id in range(self.args['n_objs']):
+        for agent_id in range(self.n_objs):
             if self.args['infer_mapping']:
                 for dir0 in dirs:
                     remaining_dirs0 = dirs.copy()
@@ -104,7 +104,7 @@ class InferSelf:
         if self.args['attention_bias']:
             if self.args['n_objs_attended_to'] == 0:
                 if np.random.rand() < 0.9:
-                     self.objs_attended_to = np.random.choice(range(self.args['n_objs']),
+                     self.objs_attended_to = np.random.choice(range(self.n_objs),
                                                     p=self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories),
                                                     size=1,
                                                     replace=False)
@@ -112,15 +112,15 @@ class InferSelf:
                     self.objs_attended_to = []
             else:
                 if self.args['uniform_attention_bias']: 
-                    probas = [1/self.args['n_objs']] * self.args['n_objs']
+                    probas = [1/self.n_objs] * self.n_objs
                 else:
                     probas = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
-                self.objs_attended_to = np.random.choice(range(self.args['n_objs']),
+                self.objs_attended_to = np.random.choice(range(self.n_objs),
                                                     p=probas,
                                                     size=self.args['n_objs_attended_to'],
                                                     replace=False)
         else:
-            self.objs_attended_to = range(self.args['n_objs'])
+            self.objs_attended_to = range(self.n_objs)
 
     def reset_prior_over_theories(self):
         self.time_since_last_reset = 0
@@ -168,7 +168,7 @@ class InferSelf:
     def forget_action_mapping(self):
         #print(self.current_posterior_over_theories.sum())
         #assert self.current_posterior_over_theories.sum() == 1
-        for id in range(self.args['n_objs']):
+        for id in range(self.n_objs):
             theories = self.get_agent_theories(id)
             probs, agent_ids = self.get_agent_mapping_probs(id)
             init_probs = self.get_agent_mapping_init_probs(id)
@@ -184,7 +184,7 @@ class InferSelf:
         # assert self.current_posterior_over_theories.sum() == 1
 
     def update_history_posterior_over_agents(self):
-        posterior_over_agents = [0 for _ in range( self.args['n_objs'])]
+        posterior_over_agents = [0 for _ in range( self.n_objs)]
         for theory, proba in zip(self.theories, self.current_posterior_over_theories):
             posterior_over_agents[theory['agent_id']] += proba
         assert (np.sum(posterior_over_agents) - 1) < 1e-5
@@ -296,7 +296,7 @@ class InferSelf:
         current_map[new_pos[0], new_pos[1]] = 4
 
 
-        for obj_id, prev_pos, new_pos in zip(range( self.args['n_objs']), prev_obj_pos, new_obj_pos):
+        for obj_id, prev_pos, new_pos in zip(range( self.n_objs), prev_obj_pos, new_obj_pos):
             if obj_id != agent_id:
                 mvt = new_pos - prev_pos  # observed movement
                 if obj_id in self.objs_attended_to:
@@ -334,8 +334,9 @@ class InferSelf:
             info_gains = [self.estimate_info_gain(input) for input in inputs]
             exp_info_gain = np.sum(info_gains)
             action_scores.append(exp_info_gain)
-        max_score = np.xmax(action_scores)
+        max_score = np.max(action_scores)
         return np.argwhere(action_scores == max_score).flatten()
+        #return np.argwhere(action_scores >= max_score*0.95).flatten()
 
     def estimate_info_gain(self, inputs):
         obs_str, obs_prob, prev_obs, action, probas = inputs
@@ -377,7 +378,6 @@ class InferSelf:
             map, positions = self.get_next_positions(prev_obs, intended_movements, agent_id)
             obs = {'objects': positions, 'map': map, 'goal': prev_obs['goal']}
             weighted_obs[dict2s(obs)] = weighted_obs.get(dict2s(obs), 0) + prob
-
         return weighted_obs
 
 
@@ -406,7 +406,7 @@ class InferSelf:
     # exploitation
     # # # # # # # # # # # #
 
-    def exploit(self, obs):
+    def exploit_prev(self, obs):
         # this implements a greedy strategy towards the goal, given assumptions about the agent identity and the input mapping
         # this only works in non-deceptive worlds (no obstacles)
         theory = self.get_best_theory()
@@ -426,17 +426,76 @@ class InferSelf:
         assert len(good_actions) > 0
         return good_actions
 
-    def get_action_prev(self, obs, enforce_mode=None):
+    def exploit(self, obs):
+        # Define the heuristic function (Manhattan distance)
+        def heuristic_dist(loc, goal_loc):
+            return abs(loc[0] - goal_loc[0]) + abs(loc[1] - goal_loc[1])
+        
+        theory = self.get_best_theory()
+        agent_id = theory['agent_id']
+        reverse_mapping = theory['input_reverse_mapping']
+        agent_pos = list(obs['objects'][agent_id])
+        goal_loc = list(obs['goal'])
+
+        parents = {}
+        parents[tuple(agent_pos)] = None
+        g_costs = {}
+        g_costs[tuple(agent_pos)] = 0
+        # Initialize the open and closed lists
+        frontier = [(heuristic_dist(agent_pos, goal_loc), agent_pos)]
+        visited = set()
+
+        while frontier:
+            #get lowest cost loc in open list
+            current_loc = heapq.heappop(frontier)[1]
+            #add to closed set
+            visited.add(tuple(current_loc))
+            #if at goal, return path
+            if current_loc == goal_loc:
+                path = []
+                while current_loc:
+                    path.append(current_loc)
+                    current_loc = parents[tuple(current_loc)]
+                path.reverse()
+                dir_to_go_str = l2s([path[1][0] - path[0][0], path[1][1] - path[0][1]])
+                return [reverse_mapping[dir_to_go_str]]
+            #get possible neighbors
+            poss_neighbors = [[current_loc[0]-1, current_loc[1]], [current_loc[0]+1, current_loc[1]],
+                                [current_loc[0], current_loc[1]-1], [current_loc[0], current_loc[1]+1]]
+            for neighbor in poss_neighbors:
+                #check if we can move to this neighbor
+                if not(self.env.unwrapped.is_empty(neighbor, agent=True, map=obs['map'])) or tuple(neighbor) in visited:
+                    continue
+                new_g_cost = g_costs[tuple(current_loc)] + 1  # assuming each step has a cost of 1
+                #update 
+                if new_g_cost < g_costs.get(tuple(neighbor), float('inf')):
+                    g_costs[tuple(neighbor)] = new_g_cost
+                    f_cost = g_costs[tuple(neighbor)] + heuristic_dist(neighbor, goal_loc)
+                    parents[tuple(neighbor)] = current_loc
+                    heapq.heappush(frontier, (f_cost, neighbor))
+        # No path found
+        print("no path found...")
+        print(obs['map'])
+        print(agent_pos)
+        return [0]
+
+
+    def do_explore(self):
+        posterior_over_agents = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
+        #return(np.max(posterior_over_agents) < self.args['explore_exploit_threshold'])
+        top = sorted(posterior_over_agents, reverse=True)[:2]
+        return(top[0]/top[1] < 1.5)
+
+    def get_action(self, obs, enforce_mode=None):
         # there are two modes of actions
         # mode explore: the agent tries to infer which object it is and what the action mapping is in an optimal way
         # mode exploit: the agent moves towards the goal
         if enforce_mode is None:
             # decide whether to explore or exploit
-            posterior_over_agents = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
-            if np.max(posterior_over_agents) >= self.args['explore_exploit_threshold']:
-                mode = "exploit"
-            else:
+            if self.do_explore():
                 mode = "explore"
+            else:
+                mode = "exploit"
         else:
             mode = enforce_mode
 
@@ -465,86 +524,88 @@ class InferSelf:
             action = np.random.choice(good_actions_exploit)
         else:
             raise NotImplementedError
-        return action
+        return action, mode
+    """
+    #utility function over s - min entropy in dist over world (how to weight this by importance?), closeness to goal
+    #if we just do closeness to goal, this should account for this
+    def get_action_2(self, obs, enforce_mode=None):
+        eus = self.act([(obs, (self.theories, self.current_posterior_over_theories))], [1], self.args['max_steps'])
+        #print(sorted(eus.items(),key=lambda x: x[0]))
+        min_eu = min(list(eus.values()))
+        good_as = [k for k in list(eus.keys()) if eus[k]==min_eu]
+        return np.random.choice(good_as)
 
-    #rn obs has stuff in the world (known state), self.theories has ideas abt who we are (unknown state)
-    #should put this all in a state variable?
+    #simulate transitions from this point, get distrib over next states
+    def transition(self, state, action):
+        prev_obs = state[0]
+        prev_theories_and_probas = state[1]
+        prev_theories = prev_theories_and_probas[0]
+        prev_theory_probas = prev_theories_and_probas[1]
+        #next way the world could be - but we also want our corresponding beliefs
+        weighted_next_obs = self.simulate(prev_obs, action, prev_theories, prev_theory_probas)
+        assert (np.isclose(sum(weighted_next_obs.values()), 1))
+        #given these obs, what would our distrib over theories be
+        #add action list, full state and prob to list
+        new_states = []
+        new_state_probs = []
+        for (obs_str, obs_prob) in weighted_next_obs.items():
+            poss_obs = s2dict(obs_str)
+            next_theory_probas, _ = self.compute_posteriors(prev_obs, poss_obs, prev_theory_probas, action)
+            new_states.append((poss_obs, (prev_theories, next_theory_probas)))
+            new_state_probs.append(obs_prob)
+        return new_states, new_state_probs
 
-    def get_action_lists(self, prev_obs, theories, theory_probas, max_steps=3):
-        #we want to return a list of actions, prob distrib over end state after those actions
-        #for state rn, all we care about is location of agent
-        #but could also pass other info like distrib over agent probs
-        all_action_lists_and_state_distribs = []
-        start_action_list = []
-        prev_action_lists_and_state_distribs = [[start_action_list, [((prev_obs, (theories, theory_probas)), 1)]]]
-        for step in range(max_steps):
-            new_action_lists_and_state_distribs = []
-            #state distribs is distrib over (prev obs, distrib over theories) tuples
-            
-            for (action_list, state_distrib) in prev_action_lists_and_state_distribs:
-                #consider each way of moving on from this point, add to list, and update distrib
-                #for each action list, we have a distrib over possible states the world could be in
-                for action in range(4):
-                    new_action_list = action_list + [action]
-                    new_state_distrib = []
-                    for state, prob in state_distrib:
-                        #simulate, get prob distrib over next states
-                        prev_obs = state[0]
-                        prev_theories_and_probas = state[1]
-                        prev_theories = prev_theories_and_probas[0]
-                        prev_theory_probas = prev_theories_and_probas[1]
-                        #next way the world could be - but we also want our corresponding beliefs
-                        weighted_next_obs = self.simulate(prev_obs, action, prev_theories, prev_theory_probas)
-                        assert (np.isclose(sum(weighted_next_obs.values()), 1))
-                        #given these obs, what would our distrib over theories be
-                        #add action list, full state and prob to list
-                        for (obs_str, obs_prob) in weighted_next_obs.items():
-                            poss_obs = s2dict(obs_str)
-                            next_theory_probas, _ = self.compute_posteriors(prev_obs, poss_obs, prev_theory_probas, action)
-                            new_state_distrib.append([(poss_obs, (theories, next_theory_probas)), prob * obs_prob])
-                    new_action_lists_and_state_distribs.append([new_action_list, new_state_distrib])
-            #we might have repeats over poss_obs for a given action list, just w dif probs over theories
-            #we should prob sum probs over these states, and take weighted average of theory probas to save on computation
-            #or, can cache simulations
-            prev_action_lists_and_state_distribs = new_action_lists_and_state_distribs
-            all_action_lists_and_state_distribs = all_action_lists_and_state_distribs + new_action_lists_and_state_distribs
-        #now we have old action lists and new_action lists
-        #add these to the frontier and re run the loop
-        #want to save a big list of everything and return at the end
-        return all_action_lists_and_state_distribs
-    
+    def act(self, poss_states, state_probs, steps):
+        num_samples = 5
+        eus = {}
+        for action in range(4):
+            for _ in range(num_samples):
+                #action = np.random.choice(range(4))
+                #print("action: ", action)
+                #print("in act, calling eu with steps", steps)
+                eu = self.expected_utility(poss_states, state_probs, action, steps)
+                #print("in act, got eus! choosing an action")
+                eus[action] = eus.get(action, []) + [eu]
+        for k,v in eus.items():
+            eus[k] = np.mean(v)
+        #normalize
+        #norm = sum(eus.values())
+        #for k,v in eus.items():
+        #    eus[k] = v/norm
+        return eus
+
+    def expected_utility(self, poss_states, state_probs, action, steps):
+        #here's a state i could be in rn
+        poss_state_idx = np.random.choice(len(poss_states), p=state_probs)
+        poss_state = poss_states[poss_state_idx]
+
+        #here's its utility
+        u = self.utility(poss_state) #distance bt expected self and goal?
+        if steps==0:
+            return u
+        #here are all the states i could go to next
+        next_poss_states, next_state_probs = self.transition(poss_state, action)
+        #if this were my distrib over states, how would i act next?
+        next_action_eus = self.act(next_poss_states, next_state_probs, steps-1)
+        #what's the expected utility of the best action from this point? add that to utility of current point.
+        #do we really want eu to be the sum of the utilities at each pt? or just at last pt?
+        min_eu = min(list(next_action_eus.values()))
+        good_as = [k for k in list(next_action_eus.keys()) if next_action_eus[k]==min_eu]
+        next_action = np.random.choice(good_as)
+        #next_action = np.random.choice(list(next_action_eus.keys()), p=list(next_action_eus.values()))
+        #print("in eu, calling eu with steps", steps-1)
+        return u + min_eu#self.expected_utility(next_poss_states, next_state_probs, next_action, steps-1)
+
     def utility(self, state):
         #for each agent id, their dist to goal
         u = 0
-        for id in range(self.args['n_objs']):
+        for id in range(self.n_objs):
             id_prob = sum([state[1][1][i] for i in range(len(state[1][0])) if state[1][0][i]["agent_id"]==id])
             vector_to_goal = state[0]['goal'] - state[0]['objects'][id]
             dist = abs(vector_to_goal[0]) + abs(vector_to_goal[1])
             u += dist * id_prob
         return u
-
-    #utility function over s - min entropy in dist over world (how to weight this by importance?), closeness to goal
-    #if we just do closeness to goal, this should account for this
-    def get_action(self, obs, enforce_mode=None):
-        action_lists_and_state_distribs = self.get_action_lists(obs, self.theories, self.current_posterior_over_theories)
-        utilities = []
-        #how to deal w lists of dif lengths? only use as tie breaker? since we will play til we win
-        for (action_list, state_distrib) in action_lists_and_state_distribs:
-            #print(action_list)
-            #print(state_distrib)
-            #print("------------------")
-            assert(np.isclose(sum([x[1] for x in state_distrib]),1))
-            exp_utility = 0
-            for (state, prob) in state_distrib:
-                exp_utility += self.utility(state) * prob
-            utilities.append(exp_utility)
-        
-        idxs = np.argwhere(utilities == np.amin(utilities)).flatten()
-        min_steps = min([len(action_lists_and_state_distribs[i][0]) for i in idxs])
-        idxs = [i for i in idxs if len(action_lists_and_state_distribs[i][0])==min_steps]
-        idx = np.random.choice(idxs)
-        return action_lists_and_state_distribs[idx][0][0]
-
+    """
     # # # # # # # # # # # #
     # utilities
     # # # # # # # # # # # #
@@ -553,7 +614,10 @@ class InferSelf:
 
     def next_obj_pos(self, prev_pos, action_dir, current_map, agent):
         predicted_pos = prev_pos + action_dir
-        if self.env.unwrapped.is_empty(predicted_pos, agent=agent, map=current_map):
+
+        if agent and self.env.unwrapped.agent_at_goal(map=current_map):
+            return prev_pos
+        elif self.env.unwrapped.is_empty(predicted_pos, agent=agent, map=current_map):
             return predicted_pos
         else:
             return prev_pos
@@ -590,7 +654,7 @@ class InferSelf:
         return smooth_posterior_over_theories
 
     def get_posterior_over_agents(self, theories, probs):
-        agent_probs = np.zeros(self.args['n_objs'])
+        agent_probs = np.zeros(self.n_objs)
         for i, t in enumerate(theories):
             id = t['agent_id']
             agent_probs[id] += probs[i]
