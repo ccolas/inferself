@@ -11,8 +11,9 @@ import numpy as np
 
 n_runs = 100
 
-expe_name = 'comparison_exp'
+expe_name = 'anotha_one2'
 envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-7-v0']
+"""
 for nm in ['logic', 'contingency', 'contingency-shuffle', 'changeAgent-7']:
     envs.append(nm + '-5-easy')
     envs.append(nm + '-5-hard')
@@ -20,7 +21,8 @@ for nm in ['logic', 'contingency', 'contingency-shuffle', 'changeAgent-7']:
     envs.append(nm + '-8-hard')
     envs.append(nm + '-12-easy')
     envs.append(nm + '-12-hard')
-agents = ['base', 'foil']
+"""
+agents = ['base', 'foil', 'forget_action_mapping_rand_attention_bias_1']
 #agents = ['base', 'rand_attention_bias_1', 'forget_action_mapping_rand_attention_bias_1']
 explore_exploit = [False]
 
@@ -192,7 +194,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
 
 
 def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="output/", overwrite=False,
-                   time_limit=200):
+                   time_limit=10000):
     data_path = save_dir + exp_name + '.pkl'
     print(f'Running experiment {exp_name}, saving to {data_path}')
 

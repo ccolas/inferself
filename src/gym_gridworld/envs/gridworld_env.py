@@ -44,8 +44,7 @@ class GridworldEnv(gym.Env):
         self.oneswitch = oneswitch
 
         layout_path = os.path.dirname(os.path.realpath(__file__)) + '/' + self.game_type + '/'
-        self.possible_layouts_paths = [layout_path + f for f in os.listdir(layout_path) if 'new' not in f]
-        #self.possible_layouts_paths = [layout_path + f for f in os.listdir(layout_path) if 'new' in f and '2' in f]
+        self.possible_layouts_paths = [layout_path + f for f in os.listdir(layout_path)]
         self.obs_shape = [128, 128, 3]  # observation space shape
         self.observation_space = spaces.Box(low=0, high=1, shape=self.obs_shape, dtype=np.float32)
 

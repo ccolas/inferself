@@ -7,28 +7,6 @@ import heapq
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
 
-#make sure we don't move once we're at the goal?
-# ARGS = dict(n_objs=4,
-#             # what to infer
-#             infer_mapping=False,
-#             infer_switch=False,
-#             # priors
-#             biased_input_mapping=False,
-#             bias_bot_mvt='uniform', # static or uniform
-#             p_switch=0.1,
-#             # learning strategies and biases
-#             likelihood_weight=1,
-#             explicit_resetting=False,
-#             # exploration
-#             explore_only=False,  # if true, the agent only explores and the goal is removed from the env
-#             explore_randomly=False,
-#             simulation='sampling',  # exhaustive or sampling
-#             n_simulations=10,  # number of simulations if sampling
-#             # explore-exploit
-#             explore_exploit_threshold=0.5, # confidence threshold for agent id
-#             verbose=True,
-#             )
-
 class InferSelf:
     def __init__(self, env, args):
         self.args = args
@@ -686,7 +664,11 @@ class InferSelf:
         if self.fig is None:
             self.fig, self.ax = plt.subplots()
             for i, d in zip(range(data.shape[1]), data.T):
-                self.ax.plot(d, c=COLORS[i],  label=f'{i}')
+                if i >= len(COLORS):
+                    col = '#2ca02c'
+                else:
+                    col = COLORS[i]
+                self.ax.plot(d, c=col,  label=f'{i}')
             #for i, d in zip(range(data.shape[1]), smooth_data.T):
             #    self.ax.plot(d, linestyle='--', c=COLORS[i], label=f'{i} smoothed')
             if true_agent is not None:
@@ -698,7 +680,11 @@ class InferSelf:
         if true_agent is not None:
             self.ax.scatter(data.shape[0] - 1, 1, c=COLORS[true_agent])
         for i, d in zip(range(data.shape[1]), data.T):
-            self.ax.plot(d, c=COLORS[i])
+            if i >= len(COLORS):
+                col = '#2ca02c'
+            else:
+                col = COLORS[i]
+            self.ax.plot(d, c=col)
         self.ax.plot(self.history_posteriors_p_switch, color='k')
         #for i, d in zip(range(data.shape[1]), smooth_data.T):
         #    self.ax.plot(d, linestyle='--', c=COLORS[i])

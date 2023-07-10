@@ -10,14 +10,14 @@ warnings.filterwarnings("ignore")
 
 #ENV = 'logic-v0'
 #ENV = 'contingency-v0'
-ENV = 'contingency-shuffle-v0'
+ENV = 'contingency-12-hard'
 #ENV = 'contingency-shuffle-v0' #infer mapping true
 #ENV = 'changeAgent-7-v0'
 
 ARGS = dict(max_steps=2,
-            is_foil=True,
+            is_foil=False,
             # what to infer
-            infer_mapping=True,
+            infer_mapping=False,
             infer_switch=True,
             # priors
             biased_action_mapping=False,
@@ -27,8 +27,7 @@ ARGS = dict(max_steps=2,
             # learning strategies and biases
             likelihood_weight=1,
             explicit_resetting=False,
-            #noise_prior_beta=[1, 15],
-            noise_prior = 0.1,
+            noise_prior = 0.01,
             # exploration
             explore_only=False,  # if true, the agent only explores and the goal is removed from the env
             explore_randomly=False,
@@ -39,7 +38,6 @@ ARGS = dict(max_steps=2,
             forget_action_mapping=False,
             n_objs_attended_to=4,
             # explore-exploit
-            explore_exploit_threshold=0.5, # confidence threshold for agent id
             verbose=True,
             )
 
