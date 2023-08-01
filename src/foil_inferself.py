@@ -22,18 +22,16 @@ COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e3
           '#7f7f7f', '#bcbd22', '#17becf']
 
 class InferSelfFoil:
-    def __init__(self, env, args):
+    def __init__(self, obs, args):
         self.args = args
         self.prior_p_switch = args['p_switch']
-        self.env = env
+        self.n_objs = np.count_nonzero(obs['map'] == 8)#get from obs
         self.prev_agent_list = []
         self.no_action_effect = False
-        self.n_objs = self.env.n_objs
-        assert 'noise' not in self.env.__str__()
         self.actions = range(4)
         self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]] # up down left right
         self.directions_str = [l2s(l) for l in self.directions] # convert directions to string form
-
+        self.mode = 'exploit'
         if self.args['bias_bot_mvt'] == 'static':
             self.prior_npc_mvt = np.tile(np.append(np.zeros(len(self.directions)), 1), (self.n_objs, 1))
         elif self.args['bias_bot_mvt'] == 'uniform':
@@ -219,7 +217,7 @@ class InferSelfFoil:
                                 [current_loc[0], current_loc[1]-1], [current_loc[0], current_loc[1]+1]]
             for neighbor in poss_neighbors:
                 #check if we can move to this neighbor
-                if not(self.env.unwrapped.is_empty(neighbor, agent=True, map=obs['map'])) or tuple(neighbor) in visited:
+                if not(self.is_empty(obs['map'], neighbor, agent=True)) or tuple(neighbor) in visited:
                     continue
                 new_g_cost = g_costs[tuple(current_loc)] + 1  # assuming each step has a cost of 1
                 #update 
@@ -265,12 +263,29 @@ class InferSelfFoil:
     def next_obj_pos(self, prev_pos, action_dir, current_map, agent):
         predicted_pos = prev_pos + action_dir
 
-        if agent and self.env.unwrapped.agent_at_goal(map=current_map):
+        if agent and self.agent_at_goal(current_map):
             return prev_pos
-        elif self.env.unwrapped.is_empty(predicted_pos, agent=agent, map=current_map):
+        elif self.is_empty(current_map, predicted_pos, agent=agent):
             return predicted_pos
         else:
             return prev_pos
+
+    #based off current beliefs about what the goal is
+    def agent_at_goal(self, current_map):
+        if self.mode == 'explore':
+            return False
+        else:
+            return False
+            #if self.poss_bel[]
+
+    def is_empty(self, map, loc, agent=True):
+        #can only move to goal if agent
+        if agent: empty = [0, 3]
+        else: empty = [0]
+        #check for out of bounds
+        if (int(loc[0]) < 0) or (int(loc[0]) >= np.shape(map)[0]) or (int(loc[1]) < 0) or (int(loc[1]) >= np.shape(map)[1]):
+            return False
+        return map[int(loc[0]), int(loc[1])] in empty
 
     def is_agent_mvt_consistent(self, theory, prev_obs, new_obs, action):
         agent_id = theory['agent_id']

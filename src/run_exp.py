@@ -11,8 +11,10 @@ import numpy as np
 
 n_runs = 100
 
-expe_name = 'anotha_one2'
-envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-7-v0']
+expe_name = 'goal_uncertainty'
+envs = ['logic_u-v0','contingency_u-v0', 'contingency_u-shuffle-v0',  'changeAgent_u-7-v0']
+#envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-7-v0'] 
+
 """
 for nm in ['logic', 'contingency', 'contingency-shuffle', 'changeAgent-7']:
     envs.append(nm + '-5-easy')
@@ -22,13 +24,13 @@ for nm in ['logic', 'contingency', 'contingency-shuffle', 'changeAgent-7']:
     envs.append(nm + '-12-easy')
     envs.append(nm + '-12-hard')
 """
-agents = ['base', 'foil', 'forget_action_mapping_rand_attention_bias_1']
+
+agents = ['base', 'forget_action_mapping_rand_attention_bias_1']
 #agents = ['base', 'rand_attention_bias_1', 'forget_action_mapping_rand_attention_bias_1']
 explore_exploit = [False]
 
 def get_args(env, agent, explore_only=False):
-    args = dict(n_objs=4,
-                max_steps=2,
+    args = dict(max_steps=2,
                 # what to infer
                 infer_mapping=False,
                 infer_switch=False,
@@ -116,13 +118,13 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     data = dict(zip(keys, [[] for _ in range(len(keys))]))
     if args['explore_only']:
         env.unwrapped.no_goal = True
-    prev_obs, prev_info = env.reset()
+    prev_obs, prev_info, prev_obs_state = env.reset()
     args.update(n_objs=env.n_candidates)
     if args['is_foil']:
-         inferself = InferSelfFoil(env=env,
+         inferself = InferSelfFoil(obs=prev_obs_state,
                                args=args)
     else:
-        inferself = InferSelf(env=env,
+        inferself = InferSelf(obs=prev_obs_state,
                           args=args)
     previous_agent = None
     for t in range(time_limit):
@@ -131,10 +133,10 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
         if 'oneswitch' in env_name:
             if t < 30:
                 mode = 1
-        action, action_mode = inferself.get_action(prev_info['semantic_state'], enforce_mode=mode)
-        obs, rew, done, info = env.step(action)
-        inferself.update_theory(prev_info['semantic_state'], info['semantic_state'], action)
-
+        action, action_mode = inferself.get_action(prev_obs_state, enforce_mode=mode)
+        obs, rew, done, info, obs_state = env.step(action)
+        inferself.update_theory(prev_obs_state, obs_state, action)
+        
         # did the agent change?
         if previous_agent != env.unwrapped.agent_id and t > 0:
             change = True
@@ -162,7 +164,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
                         top_theory=None,
                         top_theory_proba=None)
         else:
-            theory, proba = inferself.get_best_theory(get_proba=True)
+            theory, theory_id, proba = inferself.get_best_theory(get_proba=True)
             # obs contains object positions, goal pos,
             # true agent id, predicted agent, prob of true agent, prob of true mapping, prob of top theory
             true_theory_prob, noise_mean = get_prob_of_true(inferself, env.unwrapped.agent_id, env.unwrapped.action_pos_dict)
@@ -187,7 +189,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
         
         for k in new_data.keys():
             data[k].append(new_data[k])
-        prev_info = deepcopy(info)
+        prev_obs_state = deepcopy(obs_state)
         if done:
             break
     return data
@@ -228,6 +230,11 @@ def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="output/", 
                     with open(data_path, 'wb') as f:
                         pickle.dump(data, f)
 
+def get_observable(state):
+    map = state['map'].copy()
+    map[map == 4] = 8 #true self to poss self
+    map[map == 5] = 3 #true goal to poss goal
+    return {'map': map, 'objects': state['objects'].copy(), 'goal': state['goal'].copy()}
 
 if __name__ == '__main__':
     run_experiment(exp_name=expe_name, envs=envs, agents=agents, explore_exploit=explore_exploit, overwrite=False)

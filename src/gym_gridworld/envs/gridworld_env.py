@@ -8,10 +8,10 @@ import gym
 from gym import spaces
 
 # define colors
-# 0: black; 1 : gray; 2 : blue; 3 : green; 4 : red
+# 0: black; 1 : gray; 2 : green; 3 : green; 4 : red
 
 COLORS = {0: [0.0, 0.0, 0.0], 1: [0.5, 0.5, 0.5],
-          2: [0.0, 0.0, 1.0], 3: [0.0, 1.0, 0.0],
+          2: [0.0, 1.0, 0.0], 3: [0.0, 1.0, 0.0],
           4: [1.0, 0.0, 0.0], 6: [1.0, 0.0, 1.0],
           7: [1.0, 1.0, 0.0], 8: [1.0, 0.0, 0.0],
           9: [1.0, 0.0, 0.0], 10: [1.0, 0.0, 0.0]}
@@ -63,12 +63,18 @@ class GridworldEnv(gym.Env):
         self.candidates_pos = self.get_pos(of_what='candidates', map=self.start_grid_map)
         self.n_objs = len(self.candidates_pos)
         # sample agent location
-        self_pos = self.candidates_pos[np.random.randint(4)]
+        self_pos = self.candidates_pos[np.random.randint(self.n_objs)]
         self.start_grid_map[self_pos[0], self_pos[1]] = 4  # add it to the map
 
         # get object positions
-        self.goal_pos = self.get_pos(of_what='goal', map=self.start_grid_map)
-        #got idx out of bounds error
+        self.candidate_goal_pos = self.get_pos(of_what='goal', map=self.start_grid_map)
+        self.n_goals = len(self.candidate_goal_pos)
+        # sample agent location
+        self.goal_pos = self.candidate_goal_pos[np.random.randint(self.n_goals)]
+        self.start_grid_map[self.goal_pos[0], self.goal_pos[1]] = 3  # add it to the map
+        
+        #self.goal_pos = self.get_pos(of_what='goal', map=self.start_grid_map)
+        
         #should self pos only have 1 option?
         self.agent_id = np.argwhere([np.all(cpos == self_pos) for cpos in self.candidates_pos]).flatten()[0]
         self.start_grid_map[np.where(np.logical_and(self.start_grid_map != 1, self.start_grid_map != 0))] = 0  # only keep walls and empty cells
@@ -88,9 +94,14 @@ class GridworldEnv(gym.Env):
         if ('contingency' in self.game_type or 'change' in self.game_type) and ('extended_1' in self.game_type or 'extended_2' in self.game_type):
             self.mock_location = np.random.choice([[10, 6], [6, 10], [10, 14], [14, 10]])
 
-        self.contingency_directions = np.random.randint(1, size=len(self.candidates_pos))
+        #2 horizontal, 2 vertical
+        self.contingency_directions = np.zeros(len(self.candidates_pos), dtype=np.uint32)
+        idxs = np.random.choice(len(self.candidates_pos), 2, replace=False)
+        self.contingency_directions[idxs[0]] = 1
+        self.contingency_directions[idxs[1]] = 1
         self.semantic_state = self.get_semantic_state()
-        return self.observation, dict(semantic_state=deepcopy(self.semantic_state))
+        obs_state = self.get_obs_state()
+        return self.observation, dict(semantic_state=deepcopy(self.semantic_state)), obs_state
 
     def get_action_name(self, action_id):
         return self.action_names[action_id]
@@ -98,8 +109,20 @@ class GridworldEnv(gym.Env):
     def get_semantic_state(self):
         semantic_state = dict(objects=self.candidates_pos,
                               map=self.current_grid_map,
-                              goal=self.goal_pos)
+                              success=self.agent_at_goal(self.current_grid_map),
+                              goal=self.candidate_goal_pos)
         return semantic_state
+    
+    def get_obs_state(self):
+        map=self.current_grid_map
+        obs_map = map.copy()
+        obs_map[obs_map == 4] = 8 #true self to poss self
+        obs_map[obs_map == 3] = 2 #true goal to poss goal
+        state = dict(objects=self.candidates_pos,
+                     map=obs_map,
+                     success=self.agent_at_goal(self.current_grid_map))
+        return state
+    
     @property
     def self_pos(self):
         return self.candidates_pos[self.agent_id]
@@ -110,6 +133,8 @@ class GridworldEnv(gym.Env):
 
     def build_current_map(self):
         self.current_grid_map = self.start_grid_map.copy()
+        for goal_pos in self.candidate_goal_pos:
+            self.current_grid_map[goal_pos[0], goal_pos[1]] = 2
         self.current_grid_map[self.goal_pos[0], self.goal_pos[1]] = 3
         self.current_grid_map[self.self_pos[0], self.self_pos[1]] = 4
         for candidate_pos in self.non_self_candidates_pos:
@@ -122,14 +147,15 @@ class GridworldEnv(gym.Env):
             plt.axis('off')
             plt.show(block=False)
         self.plot.set_data(self.observation)
-        self.fig.canvas.draw()
-        plt.pause(0.1)
+        self.fig.canvas.draw_idle()
+        #plt.pause(0.1)
 
     def seed(self, seed):
         self._seed = seed
         np.random.seed(self._seed)
         print(self._seed)
         print(seed)
+
 
     def step(self, action):
         self.step_counter += 1
@@ -143,12 +169,13 @@ class GridworldEnv(gym.Env):
             raise NotImplementedError
         self.semantic_state = self.get_semantic_state()
         info['semantic_state'] = deepcopy(self.semantic_state)
-        return new_obs, rew, done, info
+        obs_state = self.get_obs_state()
+        return new_obs, rew, done, info, obs_state
 
     def is_empty(self, pos, agent=False, map=None):
         # checks whether the position is empty in the current map. If the agent, the goal is considered as an empty location
-        if agent: empty = [0, 3]
-        else: empty = [0]
+        if agent: empty = [0, 2, 3]
+        else: empty = [0, 2]
         if map is None: map = self.current_grid_map
         #check for out of bounds
         if (int(pos[0]) < 0) or (int(pos[0]) >= np.shape(map)[0]) or (int(pos[1]) < 0) or (int(pos[1]) >= np.shape(map)[1]):
@@ -314,7 +341,10 @@ class GridworldEnv(gym.Env):
         if map is None:
             map = self.current_grid_map
         if of_what == 'goal':
-            return np.argwhere(map == 3).flatten()
+            if len(np.argwhere(map == 2)) == 0:
+                return np.argwhere(map == 3)
+            else:
+                return np.argwhere(map == 2)
         elif of_what == 'self':
             return np.argwhere(map == 4).flatten()
         elif of_what == 'candidates':
@@ -322,6 +352,7 @@ class GridworldEnv(gym.Env):
         elif of_what == 'non_self_candidates':
             return np.argwhere(map==8)
 
+    #should change this to have only observables
     def _gridmap_to_observation(self, grid_map, obs_shape=None):
         if obs_shape is None:
             obs_shape = self.obs_shape
@@ -331,7 +362,6 @@ class GridworldEnv(gym.Env):
         for i in range(grid_map.shape[0]):
             for k in range(grid_map.shape[1]):
                 observation[i * gs0:(i + 1) * gs0, k * gs1:(k + 1) * gs1] = np.array(COLORS[grid_map[i, k]])
-
         return observation
 
     def _close_env(self):

@@ -1,8 +1,15 @@
 from gym.envs.registration import register
 
+
+############# Logic ###############
+
 register(id='logic-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='logic'))
+
+register(id='logic_u-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='logic_u'))
 
 register(id='logic-5-easy',
          entry_point='gym_gridworld.envs:GridworldEnv',
@@ -23,10 +30,20 @@ register(id='logic-12-hard',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='logic-12-hard'))
 
+register(id='logicExtended-v0',
+          entry_point='gym_gridworld.envs:GridworldEnv',
+          kwargs=dict(game_type='logic_extended'))
+
+
+############# Contingency ###############
 
 register(id='contingency-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='contingency'))
+
+register(id='contingency_u-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='contingency_u'))
 
 register(id='contingency-5-easy',
          entry_point='gym_gridworld.envs:GridworldEnv',
@@ -47,20 +64,22 @@ register(id='contingency-12-hard',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='contingency-12-hard'))
 
+register(id='contingencyExtended-v0',
+          entry_point='gym_gridworld.envs:GridworldEnv',
+          kwargs=dict(game_type='contingency_extended'))
 
-register(id='changeAgent-v0',
-         entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='change_agent'))
-
-register(id='logic-shuffle-v0',
-         entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='logic',
-                     shuffle_keys=True))
+#############  Contingency shuffle ###############
 
 register(id='contingency-shuffle-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='contingency',
                      shuffle_keys=True))
+
+register(id='contingency_u-shuffle-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='contingency_u',
+                     shuffle_keys=True))
+
 register(id='contingency-shuffle-5-easy',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='contingency-5-easy',
@@ -86,6 +105,62 @@ register(id='contingency-shuffle-12-hard',
          kwargs=dict(game_type='contingency-12-hard',
                      shuffle_keys=True))
 
+register(id='contingencyExtended-shuffle-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='contingency_extended',
+                     shuffle_keys=True))
+
+
+############# Change Agent ###############
+
+register(id='changeAgent-7-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     change_agent_every=7,
+                     noise=0))
+
+register(id='changeAgent_u-7-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent_u',
+                     change_agent_every=7,
+                     noise=0))
+
+register(id='changeAgent-7-5-easy',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent-5-easy'))
+register(id='changeAgent-7-5-hard',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent-5-hard'))
+register(id='changeAgent-7-8-easy',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent-8-easy'))
+register(id='changeAgent-7-8-hard',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent-8-hard'))
+register(id='changeAgent-7-12-easy',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent-12-easy'))
+register(id='changeAgent-7-12-hard',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent-12-hard'))
+
+
+register(id='changeAgentExtended-7-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent_extended',
+                     change_agent_every=7,
+                     noise=0))
+
+
+
+
+
+
+
+
+
+
+###################### Other #######################################
 
 register(id='changeAgent-shuffle-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
@@ -153,32 +228,6 @@ register(id='changeAgent-shuffle-noisy-15-v0',
                      change_agent_every=15,
                      noise=0.1))
 
-register(id='changeAgent-7-v0',
-         entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='change_agent',
-                     change_agent_every=7,
-                     noise=0))
-
-
-
-register(id='changeAgent-7-5-easy',
-         entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='change_agent-5-easy'))
-register(id='changeAgent-7-5-hard',
-         entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='change_agent-5-hard'))
-register(id='changeAgent-7-8-easy',
-         entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='change_agent-8-easy'))
-register(id='changeAgent-7-8-hard',
-         entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='change_agent-8-hard'))
-register(id='changeAgent-7-12-easy',
-         entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='change_agent-12-easy'))
-register(id='changeAgent-7-12-hard',
-         entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='change_agent-12-hard'))
 
 register(id='changeAgent-10-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
@@ -252,11 +301,11 @@ register(id='changeAgent-shuffle-noisy-oneswitch-v0',
                      oneswitch=True,
                      noise=0.1))
 
-# register(id='logicExtended-v0',
-#          entry_point='gym_gridworld.envs:GridworldEnv',
-#          kwargs=dict(game_type='logic_extended'))
-#
-# register(id='contingencyExtended-v0',
-#          entry_point='gym_gridworld.envs:GridworldEnv',
-#          kwargs=dict(game_type='contingency_extended'))
+register(id='changeAgent-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent'))
 
+register(id='logic-shuffle-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='logic',
+                     shuffle_keys=True))
