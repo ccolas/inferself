@@ -9,11 +9,13 @@ from foil_inferself import InferSelfFoil
 import csv
 import numpy as np
 
+
+
 n_runs = 100
 
-expe_name = 'goal_uncertainty'
-envs = ['logic_u-v0','contingency_u-v0', 'contingency_u-shuffle-v0',  'changeAgent_u-7-v0']
-#envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-7-v0'] 
+expe_name = ''
+#envs = ['logic_u-v0','contingency_u-v0', 'contingency_u-shuffle-v0',  'changeAgent_u-7-v0']
+envs = ['changeAgent-7-v0', 'contingency-shuffle-v0', 'logic-v0', 'contingency-v0']
 
 """
 for nm in ['logic', 'contingency', 'contingency-shuffle', 'changeAgent-7']:
@@ -25,7 +27,7 @@ for nm in ['logic', 'contingency', 'contingency-shuffle', 'changeAgent-7']:
     envs.append(nm + '-12-hard')
 """
 
-agents = ['base', 'forget_action_mapping_rand_attention_bias_1']
+agents = ['forget_action_mapping_rand_attention_bias_1', 'base', 'foil']
 #agents = ['base', 'rand_attention_bias_1', 'forget_action_mapping_rand_attention_bias_1']
 explore_exploit = [False]
 
@@ -36,7 +38,7 @@ def get_args(env, agent, explore_only=False):
                 infer_switch=False,
                 # priors
                 biased_action_mapping=False,
-                biased_action_mapping_factor=100,
+                biased_action_mapping_factor=10,
                 bias_bot_mvt='uniform',  # static or uniform
                 p_switch=0.01,
                 # learning strategies and biases
@@ -49,12 +51,13 @@ def get_args(env, agent, explore_only=False):
                 explore_randomly=False,
                 simulation='sampling',  # exhaustive or sampling
                 n_simulations=10,  # number of simulations if sampling
-                uniform_attention_bias=False,
+                uniform_attention_bias=True,
                 attention_bias=False,
-                mapping_forgetting_factor=0.25,
+                mapping_forgetting_factor=0.2,
                 forget_action_mapping=False,
                 n_objs_attended_to=4,
                 is_foil=False,
+                check_oob = False,
                 # explore-exploit
                 explore_exploit_threshold=0.5,  # confidence threshold for agent id
                 verbose=False,
@@ -114,6 +117,9 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     else:
         args['p_switch'] = 0.01
 
+    if args['is_foil'] and 'contingency' in env_name:
+        args['check_oob'] = True
+    
     env = gym.make(env_name)
     data = dict(zip(keys, [[] for _ in range(len(keys))]))
     if args['explore_only']:
@@ -123,34 +129,44 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     if args['is_foil']:
          inferself = InferSelfFoil(obs=prev_obs_state,
                                args=args)
+         
     else:
         inferself = InferSelf(obs=prev_obs_state,
                           args=args)
     previous_agent = None
+    
     for t in range(time_limit):
         # print(t)
-        mode=None
-        if 'oneswitch' in env_name:
-            if t < 30:
-                mode = 1
-        action, action_mode = inferself.get_action(prev_obs_state, enforce_mode=mode)
-        obs, rew, done, info, obs_state = env.step(action)
-        inferself.update_theory(prev_obs_state, obs_state, action)
         
-        # did the agent change?
-        if previous_agent != env.unwrapped.agent_id and t > 0:
-            change = True
-        else:
-            change = False
-        previous_agent = env.unwrapped.agent_id
+        mode=None
+        change = False
+        info = {}
+        action=None
+        action_mode = None
+        obs_state = prev_obs_state
+        done=False
+        if t>0:
+            if 'oneswitch' in env_name:
+                if t < 30:
+                    mode = 1
+            action, action_mode = inferself.get_action(prev_obs_state, enforce_mode=mode)
+            obs, rew, done, info, obs_state = env.step(action)
+            inferself.update_theory(prev_obs_state, obs_state, action)
+            
+            # did the agent change?
+            if previous_agent != env.unwrapped.agent_id and t > 0:
+                change = True
+            else:
+                change = False
+            previous_agent = env.unwrapped.agent_id
 
 
         if args['is_foil']:
             new_data = dict(tpt=t,
                         agent_change=change,
-                        success=info["success"],
-                        obj_pos=info['semantic_state']["objects"],
-                        map=info['semantic_state']["map"].flatten(),
+                        success=info.get("success", False),
+                        obj_pos=info.get('semantic_state', {}).get("objects", 0),
+                        map=info.get('semantic_state', {}).get("map", np.array([])).flatten(),
                         action=action,
                         true_self=env.unwrapped.agent_id,
                         all_self_probas=None,
@@ -171,9 +187,9 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
         
             new_data = dict(tpt=t,
                         agent_change=change,
-                        success=info["success"],
-                        obj_pos=info['semantic_state']["objects"],
-                        map=info['semantic_state']["map"].flatten(),
+                        success=info.get("success", False),
+                        obj_pos=info.get('semantic_state', {}).get("objects", 0),
+                        map=info.get('semantic_state', {}).get("map", np.array([])).flatten(),
                         action=action,
                         mode=action_mode,
                         true_self=env.unwrapped.agent_id,
@@ -230,11 +246,6 @@ def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="output/", 
                     with open(data_path, 'wb') as f:
                         pickle.dump(data, f)
 
-def get_observable(state):
-    map = state['map'].copy()
-    map[map == 4] = 8 #true self to poss self
-    map[map == 5] = 3 #true goal to poss goal
-    return {'map': map, 'objects': state['objects'].copy(), 'goal': state['goal'].copy()}
 
 if __name__ == '__main__':
     run_experiment(exp_name=expe_name, envs=envs, agents=agents, explore_exploit=explore_exploit, overwrite=False)

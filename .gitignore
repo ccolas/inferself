@@ -131,3 +131,6 @@ src/ignore.json
 src/outputs
 outputs
 src/output
+
+src/inferself_test.py
+src/inferself_log.py

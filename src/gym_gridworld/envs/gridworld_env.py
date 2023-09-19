@@ -99,6 +99,11 @@ class GridworldEnv(gym.Env):
         idxs = np.random.choice(len(self.candidates_pos), 2, replace=False)
         self.contingency_directions[idxs[0]] = 1
         self.contingency_directions[idxs[1]] = 1
+        #set bounds for contingency movements
+        self.contingency_bounds = []
+        for i in range(len(self.candidates_pos)):
+            self.contingency_bounds.append([[self.candidates_pos[i][0]-4, self.candidates_pos[i][0]+4],  [self.candidates_pos[i][1]-4, self.candidates_pos[i][1]+4]])
+        
         self.semantic_state = self.get_semantic_state()
         obs_state = self.get_obs_state()
         return self.observation, dict(semantic_state=deepcopy(self.semantic_state)), obs_state
@@ -241,7 +246,7 @@ class GridworldEnv(gym.Env):
                 action_dir = self.action_pos_dict[action]
             else:
                 action_dir = np.zeros(2)
-        else:
+        else: 
             action_dir = self.action_pos_dict[action]
         next_agent_pos = current_agent_pos + action_dir
         if self.is_empty(next_agent_pos, agent=True):
@@ -258,8 +263,14 @@ class GridworldEnv(gym.Env):
         for i_candidate, candidate_pos in enumerate(self.candidates_pos):
             if i_candidate != self.agent_id:
                 mvt = np.zeros(2)
-                mvt[self.contingency_directions[i_candidate]] = np.random.choice([-1, 1])
+                rand = np.random.choice([-1, 1])
+                mvt[self.contingency_directions[i_candidate]] = rand
                 next_pos = (candidate_pos + mvt).astype(int)
+                #keep in bounds
+                if not self.contingency_mvt_bounds(i_candidate, next_pos):
+                    rand = -rand
+                    mvt[self.contingency_directions[i_candidate]] = rand
+                    next_pos = (candidate_pos + mvt).astype(int)
                 if self.is_empty(next_pos):
                     new_candidates_pos[i_candidate] = next_pos
                     # update position of the agent in the current map
@@ -273,6 +284,19 @@ class GridworldEnv(gym.Env):
         self.observation = self._gridmap_to_observation(self.current_grid_map)
         return self.observation, int(info['success']), info['success'], info
 
+
+    def contingency_mvt_bounds(self, i, pos):
+        if pos[0] < self.contingency_bounds[i][0][0]:
+            return False
+        elif pos[0] > self.contingency_bounds[i][0][1]:
+            return False
+        elif pos[1] < self.contingency_bounds[i][1][0]:
+            return False
+        elif pos[1] > self.contingency_bounds[i][1][1]:
+            return False
+        return True
+    
+    
     def step_change_agent(self, action):
 
         if self.oneswitch:
@@ -321,7 +345,7 @@ class GridworldEnv(gym.Env):
         for i_candidate, candidate_pos in enumerate(self.candidates_pos):
             if i_candidate != self.agent_id:
                 mvt = np.zeros(2)
-                mvt[self.contingency_directions[i_candidate]] = np.random.choice([-1, 1])
+                mvt = possible_directions[np.random.choice(list(range(len(possible_directions))))]
                 next_pos = (candidate_pos + mvt).astype(int)
                 if self.is_empty(next_pos) and not self.pos_in_list(next_pos, new_candidates_pos):
                     new_candidates_pos[i_candidate] = next_pos

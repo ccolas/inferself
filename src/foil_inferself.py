@@ -4,19 +4,8 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import heapq
 import copy
+import random
 
-#here, we have no representation of the "self"
-#in our simulation of the world, each object has some probability of acting as we expect (0.25 + noise)
-
-#try to move whichever agent is closest to the goal
-#if the world does not change, move a different agent until you've tried to move each agent
-#how to do mapping inference?
-#believe that at any time, agent you move has a 0.25 prob of moving the way you expect, .75/4 of moving all ways
-#compute mapping for each agent
-#so still computing, if this were me, what's the prob of this mapping?
-#but don't compute prob of being me
-
-#maybe a dif version is, think that any point in time you have .25 prob of moving any agent?
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
@@ -24,6 +13,7 @@ COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e3
 class InferSelfFoil:
     def __init__(self, obs, args):
         self.args = args
+        self.check_oob = args['check_oob']
         self.prior_p_switch = args['p_switch']
         self.n_objs = np.count_nonzero(obs['map'] == 8)#get from obs
         self.prev_agent_list = []
@@ -37,7 +27,7 @@ class InferSelfFoil:
         elif self.args['bias_bot_mvt'] == 'uniform':
             self.prior_npc_mvt = np.full((self.n_objs, len(self.directions) + 1), 1 / (len(self.directions) + 1))
         else: raise NotImplementedError
-
+        self.last_action = None
         self.history_posteriors_over_agents = [[1 /  self.n_objs for _ in range(self.n_objs)]]  # fill history with prior on agent identity
         self.history_posteriors_p_switch = [-1]
         self.setup_theories()
@@ -114,8 +104,6 @@ class InferSelfFoil:
                                   self.theories) if t['agent_id']==id])
 
     def forget_action_mapping(self):
-        #print(self.current_posterior_over_theories.sum())
-        #assert self.current_posterior_over_theories.sum() == 1
         for id in range(self.n_objs):
             theories = self.theories[id]
             probs = self.current_posterior_over_theories[id]
@@ -188,20 +176,24 @@ class InferSelfFoil:
             return abs(loc[0] - goal_loc[0]) + abs(loc[1] - goal_loc[1])
         
         #move whichever is closest to the goal?
-        goal_loc = list(obs['goal'])
+        goal_loc = list(np.transpose(np.nonzero(obs['map']==2))[0])#obs['goal'])
         agent_pos = list(obs['objects'][agent_id])
 
         parents = {}
         parents[tuple(agent_pos)] = None
+        parent_actions = {}
+        parent_actions[tuple(agent_pos)] = self.last_action
         g_costs = {}
         g_costs[tuple(agent_pos)] = 0
         # Initialize the open and closed lists
-        frontier = [(heuristic_dist(agent_pos, goal_loc), agent_pos)]
+        frontier = [[heuristic_dist(agent_pos, goal_loc), 0, agent_pos]]
         visited = set()
 
+        iter = 0
         while frontier:
+            iter=iter+1
             #get lowest cost loc in open list
-            current_loc = heapq.heappop(frontier)[1]
+            (_, a, current_loc) = heapq.heappop(frontier)
             #add to closed set
             visited.add(tuple(current_loc))
             #if at goal, return path
@@ -210,12 +202,13 @@ class InferSelfFoil:
                 while current_loc:
                     path.append(current_loc)
                     current_loc = parents[tuple(current_loc)]
-                path.reverse()
+                path.reverse() 
                 return path
             #get possible neighbors
-            poss_neighbors = [[current_loc[0]-1, current_loc[1]], [current_loc[0]+1, current_loc[1]],
-                                [current_loc[0], current_loc[1]-1], [current_loc[0], current_loc[1]+1]]
-            for neighbor in poss_neighbors:
+            poss_neighbors = [([current_loc[0]-1, current_loc[1]], 0), ([current_loc[0]+1, current_loc[1]], 1),
+                                ([current_loc[0], current_loc[1]-1], 2), ([current_loc[0], current_loc[1]+1], 3)]
+            random.shuffle(poss_neighbors)
+            for (i, (neighbor, action)) in enumerate(poss_neighbors):
                 #check if we can move to this neighbor
                 if not(self.is_empty(obs['map'], neighbor, agent=True)) or tuple(neighbor) in visited:
                     continue
@@ -224,8 +217,15 @@ class InferSelfFoil:
                 if new_g_cost < g_costs.get(tuple(neighbor), float('inf')):
                     g_costs[tuple(neighbor)] = new_g_cost
                     f_cost = g_costs[tuple(neighbor)] + heuristic_dist(neighbor, goal_loc)
-                    parents[tuple(neighbor)] = current_loc
-                    heapq.heappush(frontier, (f_cost, neighbor))
+                    parents[tuple(neighbor)] = current_loc 
+                    parent_actions[tuple(neighbor)] = action
+                    if parent_actions[tuple(current_loc)] == action:
+                        tie_breaker=0
+                    else:
+                        tie_breaker = i+1
+                        f_cost = f_cost + 1/100
+                        g_costs[tuple(neighbor)] = g_costs[tuple(neighbor)] + 1/100
+                    heapq.heappush(frontier, [f_cost, tie_breaker, neighbor])
         # No path found
         print("no path found...")
         print(obs['map'])
@@ -242,21 +242,33 @@ class InferSelfFoil:
             paths.append(path)
             if path == None:
                 path_lengths.append(float('inf'))
+            elif self.check_oob and self.out_of_bounds(obs, id):
+                path_lengths.append(0)
             else:
                 path_lengths.append(len(path))
+            
         if self.no_action_effect:
             for a in self.prev_agent_list:
                 path_lengths[a] = float('inf')
-        agent_id = np.argmin(path_lengths)
+        agent_id = np.random.choice(np.flatnonzero(path_lengths == np.min(path_lengths)), 1)[0]
         self.prev_agent_list.append(agent_id)
         path = paths[agent_id]
         dir_to_go_str = l2s([path[1][0] - path[0][0], path[1][1] - path[0][1]])
         reverse_mapping = self.get_best_theory(agent_id)['input_reverse_mapping']
-        return reverse_mapping[dir_to_go_str], 'exploit'
+        action = reverse_mapping[dir_to_go_str]
+        self.last_action = action
+        return action, 'exploit'
 
     # # # # # # # # # # # #
     # utilities
     # # # # # # # # # # # #
+    def out_of_bounds(self, obs, id):
+        pos = list(obs['objects'][id])
+        if pos[0] < 2 or pos[0] > 18 or pos[1] < 2 or pos[1] > 18:
+            return True
+        else:
+            return False
+        
     def get_noise_mean(self, theory):
         return self.noise_mean_prior
 
@@ -280,7 +292,7 @@ class InferSelfFoil:
 
     def is_empty(self, map, loc, agent=True):
         #can only move to goal if agent
-        if agent: empty = [0, 3]
+        if agent: empty = [0, 2]
         else: empty = [0]
         #check for out of bounds
         if (int(loc[0]) < 0) or (int(loc[0]) >= np.shape(map)[0]) or (int(loc[1]) < 0) or (int(loc[1]) >= np.shape(map)[1]):

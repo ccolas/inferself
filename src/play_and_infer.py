@@ -1,14 +1,15 @@
 from copy import deepcopy
 import pygame
 import gym
+import skimage
 from inferself import InferSelf
 from foil_inferself import InferSelfFoil
 from gym_gridworld import __init__
 import warnings
 warnings.filterwarnings("ignore") 
 
-#ENV = 'logic_u-v0'
-ENV = 'contingency_u-v0'
+ENV = 'logic-v0'
+#ENV = 'contingency_u-v0'
 #ENV = 'changeAgent_u-7-v0'
 #ENV = 'logicExtended-v0'
 #ENV = 'contingency_u-shuffle-v0'
@@ -23,14 +24,15 @@ ENV = 'contingency_u-v0'
 
 ARGS = dict(max_steps=2,
             is_foil=False,
+            check_oob=False,
             # what to infer
-            infer_mapping=True,
-            infer_switch=True,
+            infer_mapping=False,
+            infer_switch=False,
             # priors
             biased_action_mapping=False,
             biased_action_mapping_factor=100,
             bias_bot_mvt='uniform', # static or uniform
-            p_switch=0.01,
+            p_switch=1/7,
             # learning strategies and biases
             likelihood_weight=1,
             explicit_resetting=False,
@@ -43,7 +45,7 @@ ARGS = dict(max_steps=2,
             n_simulations=10,  # number of simulations if sampling
             attention_bias=False,
             mapping_forgetting_factor=0.25,
-            forget_action_mapping=True,
+            forget_action_mapping=False,
             n_objs_attended_to=1,
             # explore-exploit
             verbose=True,

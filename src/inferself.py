@@ -3,6 +3,7 @@ import scipy
 from copy import deepcopy
 import matplotlib.pyplot as plt
 import heapq
+import random
 
 #TODO
 #fix the map situation
@@ -32,11 +33,11 @@ class InferSelf:
         else: raise NotImplementedError
 
         self.history_posteriors_over_agents = [[1 /  self.n_objs for _ in range( self.n_objs)]]  # fill history with prior on agent identity
-        self.history_posteriors_p_switch = []
+        self.history_posteriors_p_switch = [self.prior_p_switch]
         self.setup_theories()
         self.fig = None
         self.noise_mean_prior = self.args['noise_prior']
-        
+        self.last_action = None
         #right now, theories includes each self/action mapping pair
         #let's also have possible beliefs, which tracks for each theory, possible beliefs under that theory (ePOMDP)
         self.setup_poss_beliefs(obs)
@@ -362,8 +363,7 @@ class InferSelf:
             exp_info_gain = np.sum(info_gains)
             action_scores.append(exp_info_gain)
         max_score = np.max(action_scores)
-        return np.argwhere(action_scores == max_score).flatten()
-        #return np.argwhere(action_scores >= max_score*0.95).flatten()
+        return np.argwhere(action_scores >= max_score*0.99).flatten()
 
     def estimate_info_gain(self, inputs):
         obs_str, obs_prob, prev_obs, action, probas = inputs
@@ -472,21 +472,28 @@ class InferSelf:
         assert len(good_actions) > 0
         return good_actions
 
+
+
+#change this so pop doesn't uses most recent action as tie breaker
     def run_astar(self, goal_loc, map, agent_pos, action_mapping):
         def heuristic_dist(loc, goal_loc):
             return abs(loc[0] - goal_loc[0]) + abs(loc[1] - goal_loc[1])
 
         parents = {}
         parents[tuple(agent_pos)] = None
+        parent_actions = {}
+        parent_actions[tuple(agent_pos)] = self.last_action
         g_costs = {}
         g_costs[tuple(agent_pos)] = 0
         # Initialize the open and closed lists
-        frontier = [(heuristic_dist(agent_pos, goal_loc), agent_pos)]
+        frontier = [[heuristic_dist(agent_pos, goal_loc), 0, agent_pos]]
         visited = set()
 
+        iter = 0
         while frontier:
+            iter=iter+1
             #get lowest cost loc in open list
-            current_loc = heapq.heappop(frontier)[1]
+            (_, a, current_loc) = heapq.heappop(frontier)
             #add to closed set
             visited.add(tuple(current_loc))
             #if at goal, return path
@@ -499,9 +506,10 @@ class InferSelf:
                 dir_to_go_str = l2s([path[1][0] - path[0][0], path[1][1] - path[0][1]])
                 return [action_mapping[dir_to_go_str]], len(path)
             #get possible neighbors
-            poss_neighbors = [[current_loc[0]-1, current_loc[1]], [current_loc[0]+1, current_loc[1]],
-                                [current_loc[0], current_loc[1]-1], [current_loc[0], current_loc[1]+1]]
-            for neighbor in poss_neighbors:
+            poss_neighbors = [([current_loc[0]-1, current_loc[1]], 0), ([current_loc[0]+1, current_loc[1]], 1),
+                                ([current_loc[0], current_loc[1]-1], 2), ([current_loc[0], current_loc[1]+1], 3)]
+            random.shuffle(poss_neighbors)
+            for (i, (neighbor, action)) in enumerate(poss_neighbors):
                 #check if we can move to this neighbor
                 can_move_there = self.is_empty(map, neighbor, agent=True)
                 if not(can_move_there):
@@ -516,7 +524,14 @@ class InferSelf:
                     g_costs[tuple(neighbor)] = new_g_cost
                     f_cost = g_costs[tuple(neighbor)] + heuristic_dist(neighbor, goal_loc)
                     parents[tuple(neighbor)] = current_loc
-                    heapq.heappush(frontier, (f_cost, neighbor))
+                    parent_actions[tuple(neighbor)] = action
+                    if parent_actions[tuple(current_loc)] == action:
+                        tie_breaker=0
+                    else:
+                        tie_breaker = i+1
+                        f_cost = f_cost + 1/100
+                        g_costs[tuple(neighbor)] = g_costs[tuple(neighbor)] + 1/100
+                    heapq.heappush(frontier, [f_cost, tie_breaker, neighbor])
         # No path found
         print("no path found...")
         print(map)
@@ -529,28 +544,21 @@ class InferSelf:
         #get belief
         [goal_locs, goal_loc_prob] = self.poss_beliefs[theory_id]['goal_locs']
         #get most probable and break ties based on closeness
-        #print(goal_loc_prob)
-        #print(np.isclose(goal_loc_prob, np.max(goal_loc_prob)))
-        #print(np.argwhere(np.isclose(goal_loc_prob, np.max(goal_loc_prob))))
         top_locs = goal_locs[np.argwhere(np.isclose(goal_loc_prob, np.max(goal_loc_prob))).flatten()]
         distances = []
         actions = []
         for loc in top_locs:
             if np.all(loc==obs['objects'][agent_id]):
-                print("agent already at this loc! what the")
-                print(obs)
-                njfe
                 actions.append(0)
                 distances.append(0)
             else:
                 action, path_len = self.run_astar(loc, obs['map'], list(obs['objects'][agent_id]), theory['input_reverse_mapping'])
                 actions.append(action)
                 distances.append(path_len)
-        return actions[np.argmin(distances)]
+        return actions[get_rand_idx(distances, False)]
 
     def do_explore(self):
         posterior_over_agents = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
-        #return(np.max(posterior_over_agents) < self.args['explore_exploit_threshold'])
         top = sorted(posterior_over_agents, reverse=True)[:2]
         return(top[0]/top[1] < 1.5)
 
@@ -592,6 +600,7 @@ class InferSelf:
             action = np.random.choice(good_actions_exploit)
         else:
             raise NotImplementedError
+        self.last_action = action
         return action, mode
     
     # # # # # # # # # # # #
@@ -642,7 +651,7 @@ class InferSelf:
         return np.all(predicted_pos == new_pos)
 
     def get_best_theory(self, get_proba=False):
-        theory_id = np.argmax(self.current_posterior_over_theories)
+        theory_id = get_rand_idx(self.current_posterior_over_theories) #should be random
         if get_proba:
             return self.theories[theory_id], theory_id, self.current_posterior_over_theories[theory_id]
         else:
@@ -757,6 +766,12 @@ def information_gain(p0, p1):
     p0 = [round(x,10) for x in p0]
     p1 = [round(x,10) for x in p1]
     return scipy.spatial.distance.jensenshannon(p0, p1)
+
+def get_rand_idx(a, max=True):
+    if max:
+        return np.random.choice(np.flatnonzero(a == np.max(a)), 1)[0]
+    else:
+        return np.random.choice(np.flatnonzero(a == np.min(a)), 1)[0]
 
 def fix_p( p):
     if p.sum() != 1.0:
