@@ -13,7 +13,7 @@ import numpy as np
 
 n_runs = 100
 
-expe_name = ''
+expe_name = 'exp'
 #envs = ['logic_u-v0','contingency_u-v0', 'contingency_u-shuffle-v0',  'changeAgent_u-7-v0']
 envs = ['changeAgent-7-v0', 'contingency-shuffle-v0', 'logic-v0', 'contingency-v0']
 
@@ -50,7 +50,7 @@ def get_args(env, agent, explore_only=False):
                 explore_only=False,  # if true, the agent only explores and the goal is removed from the env
                 explore_randomly=False,
                 simulation='sampling',  # exhaustive or sampling
-                n_simulations=10,  # number of simulations if sampling
+                n_simulations=30,  # number of simulations if sampling
                 uniform_attention_bias=True,
                 attention_bias=False,
                 mapping_forgetting_factor=0.2,

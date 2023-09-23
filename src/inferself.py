@@ -363,7 +363,7 @@ class InferSelf:
             exp_info_gain = np.sum(info_gains)
             action_scores.append(exp_info_gain)
         max_score = np.max(action_scores)
-        return np.argwhere(action_scores >= max_score*0.99).flatten()
+        return np.argwhere(action_scores >= max_score*0.95).flatten()
 
     def estimate_info_gain(self, inputs):
         obs_str, obs_prob, prev_obs, action, probas = inputs

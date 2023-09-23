@@ -172,9 +172,11 @@ def get_success_df(agents, envs):
                     exploit = None
 
                 data.append({'env':env.split('_False')[0],'agent':agent,'seed':seed,'first_exploit':exploit, 'success':success})
-    print(np.mean(temp))
+    #print(np.mean(temp))
     df = pd.DataFrame.from_dict(data)
-    df2 = pd.read_csv('/Users/traceymills/Dropbox (MIT)/cocosci_projects/self/inferself/src/analyses/exp_data_means.csv')
+    df2 = pd.DataFrame.from_dict(get_exp_data(mean=True))
+    #df2 = pd.read_csv('/Users/traceymills/Dropbox (MIT)/cocosci_projects/self/inferself/src/analyses/exp_data_means.csv')
+    print(len(df2[df2["agent"]=="human_asymptote"]))
     df2["first_exploit"] = None
     df = pd.concat([df,df2], ignore_index = True)
     df = df[df["agent"].isin(agents)]
@@ -485,6 +487,8 @@ def print_vars(agents, envs):
 
 def print_stats(agents, envs):
     df = get_success_df(agents, envs)
+    df.to_csv('data2.csv')
+    
     df_base = df[df["agent"]=="base"]
     df_human = df[df["agent"]=="human_asymptote"]
     df_rr = df[df["agent"]=="forget_action_mapping_rand_attention_bias_1"]
@@ -495,6 +499,8 @@ def print_stats(agents, envs):
         heur_succ = df_heur[df_heur["env"]==env]["success"]
         hum_succ = df_human[df_human["env"]==env]["success"]
         rr_succ = df_rr[df_rr["env"]==env]["success"]
+        print(len(hum_succ)) #len 1300, should be len 13
+        print(len(rr_succ))
         #print(scipy.stats.mannwhitneyu(base_succ, hum_succ))
         print(scipy.stats.ttest_ind(base_succ, hum_succ, equal_var=False))
         #print(scipy.stats.mannwhitneyu(rr_succ, hum_succ))
@@ -508,6 +514,18 @@ def print_stats(agents, envs):
     print(scipy.stats.pearsonr(mean_df[mean_df["agent"]=="human_asymptote"]["success"], mean_df[mean_df["agent"]=="base"]["success"]))
     print(scipy.stats.pearsonr(mean_df[mean_df["agent"]=="human_asymptote"]["success"], mean_df[mean_df["agent"]=="foil"]["success"]))
     print(scipy.stats.pearsonr(mean_df[mean_df["agent"]=="base"]["success"], mean_df[mean_df["agent"]=="forget_action_mapping_rand_attention_bias_1"]["success"]))
+    
+    x = mean_df[mean_df["agent"]=="human_asymptote"]["success"]
+    y = mean_df[mean_df["agent"]=="base"]["success"]
+    #y = mean_df[mean_df["agent"]=="forget_action_mapping_rand_attention_bias_1"]["success"]
+    a, b = np.polyfit(x, y, 1)
+    #add points to plot
+    #fig, ax = plt.subplots()
+    #ax.scatter(x, y)
+    #add line of best fit to plot
+    #ax.plot(x, a*x+b)
+    #ax.plot([0, np.max([ax.get_xlim(), ax.get_ylim()])], [0, np.max([ax.get_xlim(), ax.get_ylim()])], color="red")
+    #plt.show()
 
 #probability of rejecting null hyp if it should be rejected, 1 - P(false negative)
 def power_analaysis():
@@ -979,9 +997,10 @@ if __name__ == "__main__":
     agents = ['human_asymptote', 'forget_action_mapping_rand_attention_bias_1', 'base', 'foil']
 
     all_data = load_data(['exp.pkl'])
+    print_stats(agents, envs)
     #make_heatmap_data()
     #compare_data(agents, envs)
     #plot_each_game()
     #plot_mean_success_new(agents, envs)
-    plot_mean_success(agents, envs)
-    compare_centering_speed(f="")
+    #plot_mean_success(agents, envs)
+    #compare_centering_speed(f="")
