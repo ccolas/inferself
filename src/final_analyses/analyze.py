@@ -7,6 +7,10 @@ import pandas as pd
 import scipy
 import json
 from statannotations.Annotator import Annotator
+import rpy2.robjects as robjects
+from rpy2.robjects import r, pandas2ri
+from rpy2.robjects.packages import importr
+pandas2ri.activate()
 
 
 asymptote = 35
@@ -26,7 +30,7 @@ def get_human_data():
             with open(human_data_path + folder + 'human/' + fname) as f:
                 subj = json.load(f)
             subj_mean = np.mean(subj['data']['steps'][asymptote:])
-            data.append({'env':env_name, 'agent':'Human', 'steps':subj_mean})
+            data.append({'env':env_name, 'agent':'Humans', 'steps':subj_mean})
     df = pd.DataFrame.from_dict(data)
     return df
 
@@ -41,12 +45,12 @@ def get_human_data_centering():
         env_data = env_data[['self_finding_steps', 'steps', 'participant']]
         env_data = env_data.rename(columns={"self_finding_steps": "sf_steps"})
         env_data['env'] = env_names[env]
-        env_data['agent'] = 'Human'
+        env_data['agent'] = 'Humans'
         df = pd.concat([df, env_data])
     return df
 
 def get_model_data():
-    agent_names = {'base':'Meta-ePOMDP', 'foil':'Heuristic', 'forget_action_mapping_rand_attention_bias_1': 'Resource rational meta-ePOMDP'}
+    agent_names = {'base':'Meta-ePOMDP', 'foil':'Proximity heuristic', 'forget_action_mapping_rand_attention_bias_1': 'Resource-limited meta-ePOMDP'}
     env_names = {"logic-v0_False": "Logic", "contingency-v0_False": "Contingency", 'contingency-shuffle-v0_False':'Switching Mappings', 'changeAgent-7-v0_False':'Switching Embodiments'}
     with open(model_data_path + 'exp.pkl', 'rb') as f:
         exp_data = pickle.load(f)
@@ -61,7 +65,7 @@ def get_model_data():
                 ind_success = np.argwhere(np.array(level_data['success'])).flatten()
                 steps = ind_success[0]
                 #get steps until centered
-                if env_names[env] in ["Contingency", "Switching Mappings"] and agent_names[agent] in ['Meta-ePOMDP', 'Resource rational meta-ePOMDP']:
+                if env_names[env] in ["Contingency", "Switching Mappings"] and agent_names[agent] in ['Meta-ePOMDP', 'Resource-limited meta-ePOMDP']:
                     true_self = level_data['true_self'][0]
                     for t, char_probas in enumerate(level_data['all_self_probas']):
                         if char_probas[true_self] == max(char_probas):
@@ -80,16 +84,16 @@ def get_model_data():
 
 
 def plot_performance(df, save=False, annotate=False):
-    agent_order = ['Human', 'Resource rational meta-ePOMDP', 'Meta-ePOMDP', 'Heuristic']
+    agent_order = ['Humans', 'Resource-limited meta-ePOMDP', 'Meta-ePOMDP', 'Proximity heuristic']
     env_order = ['Logic', 'Contingency', 'Switching Mappings', 'Switching Embodiments']
-    ax = sns.barplot(data=df, x='env', y='steps',hue='agent', hue_order=agent_order, palette='viridis', edgecolor='black', order = env_order, alpha=0.9)
+    ax = sns.barplot(data=df, x='env', y='steps',hue='agent', hue_order=agent_order, palette='viridis', edgecolor='black', order = env_order, alpha=0.9, ci=95)
     plt.ylabel("Average no. steps to complete level", fontweight="bold", fontsize=15)
     plt.xticks(fontsize=12)
     plt.xlabel("Game type", fontweight="bold", fontsize=15)
     if annotate:
         pairs = []
         pvalues = []
-        to_compare = [('Humans', 'Meta-ePOMDP'), ('Humans', 'Resource rational meta-ePOMDP'), ('Humans', 'Heuristic model')]
+        to_compare = [('Humans', 'Meta-ePOMDP'), ('Humans', 'Resource-limited meta-ePOMDP'), ('Humans', 'Proximity heuristic')]
         for env in env_order:
             for pair in to_compare:
                 pairs.append([(env, pair[0]), (env, pair[1])])
@@ -117,10 +121,12 @@ def plot_performance(df, save=False, annotate=False):
 
 
 def stats_performance(df):
-    df_human = df[df["agent"]=="Human"]
+    BayesFactor = importr('BayesFactor')
+    
+    df_human = df[df["agent"]=="Humans"]
     df_meta = df[df["agent"]=="Meta-ePOMDP"]
-    df_rr = df[df["agent"]=="Resource rational meta-ePOMDP"]
-    df_heur = df[df["agent"]=="Heuristic"]
+    df_rr = df[df["agent"]=="Resource-limited meta-ePOMDP"]
+    df_heur = df[df["agent"]=="Proximity heuristic"]
     print("t tests:")
     for env in pd.unique(df["env"]):
         print("game type: " + env)
@@ -131,6 +137,19 @@ def stats_performance(df):
         print("human, meta: " + str(scipy.stats.ttest_ind(meta_steps, human_steps, equal_var=False)))
         print("human, rr: "+ str(scipy.stats.ttest_ind(rr_steps, human_steps, equal_var=False)))
         print("human, heuristic: "+ str(scipy.stats.ttest_ind(heur_steps, human_steps, equal_var=False)))
+    print("\nbayes factor tests:")
+    for env in pd.unique(df["env"]):
+        print("game type: " + env)        
+        robjects.globalenv["human"] = df_human[df_human["env"]==env]
+        robjects.globalenv["meta"] = df_meta[df_meta["env"]==env]
+        robjects.globalenv["rr"] = df_rr[df_rr["env"]==env]
+        robjects.globalenv["heur"] = df_heur[df_heur["env"]==env]
+        print("human, meta: ")
+        r('print(ttestBF(x=human$steps, y=meta$steps))')
+        print("human, rr: ")
+        r('print(ttestBF(x=human$steps, y=rr$steps))')
+        print("human, heuristic: ")
+        r('print(ttestBF(x=human$steps, y=heur$steps))')
     mean_human_steps = df_human.groupby(['env'], as_index=False)["steps"].mean()["steps"]
     mean_meta_steps = df_meta.groupby(['env'], as_index=False)["steps"].mean()["steps"]
     mean_rr_steps = df_rr.groupby(['env'], as_index=False)["steps"].mean()["steps"]
@@ -141,14 +160,15 @@ def stats_performance(df):
     print("human, heuristic: "+ str(scipy.stats.pearsonr(mean_human_steps, mean_heur_steps)))
 
 
+
 #want to look at num steps before finding correct avatar
 def plot_centering(df, save=False):
-    df = df[df["agent"] != "Heuristic"]
+    df = df[df["agent"] != "Proximity heuristic"]
     env_order = ['Contingency', 'Switching Mappings']
     df['agent_before'] = df['agent'] + ", before selection"
     df['agent_after'] = df['agent'] + ", after selection"
-    ax = sns.barplot(data=df, x='env', y='steps', hue='agent_after', order=env_order, palette='viridis', edgecolor='black', alpha=0.5)
-    sns.barplot(data=df, x='env', y='sf_steps', hue='agent_before', order=env_order, palette='viridis', edgecolor='black',  alpha=0.9)
+    ax = sns.barplot(data=df, x='env', y='steps', hue='agent_after', order=env_order, palette='viridis', edgecolor='black', alpha=0.5, ci=95)
+    sns.barplot(data=df, x='env', y='sf_steps', hue='agent_before', order=env_order, palette='viridis', edgecolor='black',  alpha=0.9, ci=95)
     plt.xticks(fontsize=12)
     plt.xlabel('Game type', fontsize=15, fontweight="bold")
     plt.ylabel('Average no. steps', fontsize=15, fontweight="bold")
@@ -165,8 +185,8 @@ def stats_centering(df, hum_prev_df):
     print("original vs new human performance data:")
     for env in ["Contingency", "Switching Mappings"]:
         print("game type: " + env)
-        steps_new = df[(df["env"] == env) & (df["agent"] == "Human")]["steps"]
-        steps_prev = hum_prev_df[(hum_prev_df["env"] == env) & (hum_prev_df["agent"] == "Human")]["steps"]
+        steps_new = df[(df["env"] == env) & (df["agent"] == "Humans")]["steps"]
+        steps_prev = hum_prev_df[(hum_prev_df["env"] == env) & (hum_prev_df["agent"] == "Humans")]["steps"]
         print("og mean: " + str(np.mean(steps_prev)))
         print("new mean: " + str(np.mean(steps_new)))
         print(scipy.stats.ttest_ind(steps_new, steps_prev))
@@ -174,8 +194,8 @@ def stats_centering(df, hum_prev_df):
     print("\nhuman vs model centering data:")
     for env in ["Contingency", "Switching Mappings"]:
         print("game type: " + env)
-        sf_steps_human = df[(df["env"] == env) & (df["agent"] == "Human")]["sf_steps"]
-        sf_steps_rr = df[(df["env"] == env) & (df["agent"] == 'Resource rational meta-ePOMDP')]["sf_steps"]
+        sf_steps_human = df[(df["env"] == env) & (df["agent"] == "Humans")]["sf_steps"]
+        sf_steps_rr = df[(df["env"] == env) & (df["agent"] == 'Resource-limited meta-ePOMDP')]["sf_steps"]
         sf_steps_human = [x for x in sf_steps_human if not np.isnan(x)]
         sf_steps_rr = [x for x in sf_steps_rr if not np.isnan(x)]
         print("human mean: " + str(np.mean(sf_steps_human)))
@@ -191,9 +211,9 @@ if __name__ == "__main__":
     df_human = get_human_data()
     df_model = get_model_data()
     df = pd.concat([df_human, df_model], ignore_index=True)
-    #plot_performance(df)
+    #plot_performance(df, save=True)
     stats_performance(df)
-    df_human_centering = get_human_data_centering()
-    df_centering = pd.concat([df_human_centering, df_model], ignore_index=True)
-    #plot_centering(df_centering)
-    stats_centering(df_centering, df_human)
+    #df_human_centering = get_human_data_centering()
+    #df_centering = pd.concat([df_human_centering, df_model], ignore_index=True)
+    #plot_centering(df_centering, save=True)
+    #stats_centering(df_centering, df_human)
