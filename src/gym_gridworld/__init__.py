@@ -45,6 +45,22 @@ register(id='contingency_u-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='contingency_u'))
 
+register(id='contingency_noisy-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='contingency', noise=0.25))
+
+register(id='contingency_more_chars-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='contingency_more_chars'))
+register(id='contingency_less_chars-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='contingency_less_chars'))
+
+
+register(id='contingency_8_chars-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='contingency_8_chars'))
+
 register(id='contingency-5-easy',
          entry_point='gym_gridworld.envs:GridworldEnv',
          kwargs=dict(game_type='contingency-5-easy'))
@@ -151,7 +167,17 @@ register(id='changeAgentExtended-7-v0',
                      change_agent_every=7,
                      noise=0))
 
+register(id='changeAgent-10-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent',
+                     change_agent_every=10,
+                     noise=0))
 
+register(id='changeAgent_u-10-v0',
+         entry_point='gym_gridworld.envs:GridworldEnv',
+         kwargs=dict(game_type='change_agent_u',
+                     change_agent_every=10,
+                     noise=0))
 
 
 
@@ -229,11 +255,6 @@ register(id='changeAgent-shuffle-noisy-15-v0',
                      noise=0.1))
 
 
-register(id='changeAgent-10-v0',
-         entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='change_agent',
-                     change_agent_every=10,
-                     noise=0))
 
 register(id='changeAgent-15-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',

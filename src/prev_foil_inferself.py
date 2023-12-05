@@ -6,15 +6,9 @@ import heapq
 import copy
 import random
 
-#we are changing this to no longer infer the action mapping - instead, we just count the best key for each direction? Or the best mapping?
-#could say, for each action, what is the prob of each effect?
-#then when we want a particular effect, choose the action that most probably brings it about
-
-#choose closest goal/agent pair, and rule out once you've reached it without success
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
-poss_goal_num = 2
 
 class InferSelfFoil:
     def __init__(self, obs, args):
@@ -34,13 +28,10 @@ class InferSelfFoil:
             self.prior_npc_mvt = np.full((self.n_objs, len(self.directions) + 1), 1 / (len(self.directions) + 1))
         else: raise NotImplementedError
         self.last_action = None
-        self.history_posteriors_over_agents = [[1 / self.n_objs for _ in range(self.n_objs)]]  # fill history with prior on agent identity
+        self.history_posteriors_over_agents = [[1 /  self.n_objs for _ in range(self.n_objs)]]  # fill history with prior on agent identity
         self.history_posteriors_p_switch = [-1]
-        self.key_success_counts = None
         self.setup_theories()
         self.fig = None
-        self.poss_goal_locs = np.transpose(np.nonzero(obs['map']==poss_goal_num))
-        self.prev_selected_char = None
         self.noise = args['heuristic_noise']
         self.noise_mean_prior = self.args['noise_prior']
         #self.forget_action_mappings
@@ -53,16 +44,9 @@ class InferSelfFoil:
         self.theories = {}
         self.initial_prior_over_theories = {}
         dirs = self.directions_str.copy()
-        if self.args['infer_mapping']:
-            self.key_success_counts = []
-            for _ in range(len(self.actions)):
-                self.key_success_counts.append(np.zeros(len(self.directions)))
-        #for dir in dirs:
-        #    self.key_success_counts[dir] = np.zeros(len(self.actions))
         # list all theories
         for agent_id in range(self.n_objs):
             if self.args['infer_mapping']:
-                #for each direction, how many times did each key make it move in that direction?
                 self.theories[agent_id] = []
                 for dir0 in dirs:
                     remaining_dirs0 = dirs.copy()
@@ -96,20 +80,17 @@ class InferSelfFoil:
     # Running inference
     # # # # # # # # # # # # # # # #
     def update_theory(self, prev_obs, new_obs, action):
-        #if prev selected char at prev selected goal and no success, remove from poss goal list
-        if np.all(new_obs['objects'][self.prev_selected_char] == self.prev_selected_goal):
-            self.poss_goal_locs = [l for l in self.poss_goal_locs if ~(np.all(l==self.prev_selected_goal))]
-        if self.args['infer_mapping']:
-            #update key_success here
-            #what was the previously moved agent?
-            #which dir did it move?
-            if self.prev_selected_char != None:
-                dir = new_obs['objects'][self.prev_selected_char] - prev_obs['objects'][self.prev_selected_char]
-            #for this action, increase count for observed dir
-            if ~(np.all(dir == [0,0])):
-                dir_idx = self.directions_str.index(l2s(dir))
-                self.key_success_counts[action][dir_idx]+=1
+        changes = [i for i in range(len(prev_obs['objects'])) if list(prev_obs['objects'][i]) != list(new_obs['objects'][i])]
+        if len(changes) == 0:
+            self.no_action_effect = True
+        else:
+            self.no_action_effect = False
+            self.prev_agent_list = []
         self.current_posterior_over_theories = self.compute_posteriors(prev_obs, new_obs, self.current_posterior_over_theories, action)
+        #after updating, forget!
+        if self.args['infer_mapping'] and self.args['forget_action_mapping']:
+            self.forget_action_mapping()
+
         if self.args['verbose']: self.print_top(self.theories, self.current_posterior_over_theories)
 
     def get_agent_theories(self, id):
@@ -190,12 +171,13 @@ class InferSelfFoil:
     # exploitation
     # # # # # # # # # # # #
 
-    def exploit(self, obs, agent_id, goal_loc):
+    def exploit(self, obs, agent_id):
         # Define the heuristic function (Manhattan distance)
         def heuristic_dist(loc, goal_loc):
             return abs(loc[0] - goal_loc[0]) + abs(loc[1] - goal_loc[1])
         
         #move whichever is closest to the goal
+        goal_loc = list(np.transpose(np.nonzero(obs['map']==2))[0])#obs['goal'])
         agent_pos = list(obs['objects'][agent_id])
 
         parents = {}
@@ -216,7 +198,7 @@ class InferSelfFoil:
             #add to closed set
             visited.add(tuple(current_loc))
             #if at goal, return path
-            if np.all(current_loc == goal_loc):
+            if current_loc == goal_loc:
                 path = []
                 while current_loc:
                     path.append(current_loc)
@@ -255,64 +237,31 @@ class InferSelfFoil:
         #get length of path to goal for each character
         path_lengths = []
         paths = []
-        agents = []
-        goal_locs = []
+        for id in range(self.n_objs):
+            path = self.exploit(obs, id)
+            paths.append(path)
+            if path == None:
+                path_lengths.append(float('inf'))
+            #elif self.check_oob and self.out_of_bounds(obs, id):
+            #    path_lengths.append(0)
+            else:
+                path_lengths.append(len(path))
+        #if self.no_action_effect:
+        #    for a in self.prev_agent_list:
+        #        path_lengths[a] = float('inf')
         
-        #with high prob, choose agent/goal_loc pair with min path length
-        if np.random.rand() >= self.noise:
-            for id in range(self.n_objs):
-                for goal_loc in self.poss_goal_locs:
-                    path = self.exploit(obs, id, goal_loc)
-                    #move to dif goal of already at one
-                    if path != None and len(path)<2:
-                        path = None
-                    paths.append(path)
-                    if path == None:
-                        path_lengths.append(float('inf'))
-                    else:
-                        path_lengths.append(len(path))
-                    agents.append(id)
-                    goal_locs.append(goal_loc)
-            path_idx = np.random.choice(np.flatnonzero(path_lengths == np.min(path_lengths)), 1)[0]
-            path = paths[path_idx]
-            agent_id = agents[path_idx]
-            goal_loc = goal_locs[path_idx]
-        else: #otherwise choose random agent and move it to the closest goal (or random goal?)
+        #with high prob, choose agent with min path length
+        if np.random.rand() < self.noise:
             agent_id = np.random.choice(range(self.n_objs), p=np.ones(self.n_objs) / self.n_objs, size=1)[0]
-            for goal_loc in self.poss_goal_locs:
-                path = self.exploit(obs, agent_id, goal_loc)
-                #move to dif goal of already at one
-                if path != None and len(path)<2:
-                    path = None
-                paths.append(path)
-                if path == None:
-                    path_lengths.append(float('inf'))
-                else:
-                    path_lengths.append(len(path))
-                agents.append(agent_id)
-                goal_locs.append(goal_loc)
-            path_idx = np.random.choice(np.flatnonzero(path_lengths == np.min(path_lengths)), 1)[0]
-            path = paths[path_idx]
-            goal_loc = self.poss_goal_locs[path_idx]
-        if path == None:
-            dir_to_go_str = np.random.choice(self.directions_str, 1)[0]
         else:
-            dir_to_go_str = l2s([path[1][0] - path[0][0], path[1][1] - path[0][1]])
-        #based on dir, get action
-        if self.args['infer_mapping']:
-            dir_idx = self.directions_str.index(dir_to_go_str)
-            dir_probs = []
-            for (a, l) in enumerate(self.key_success_counts):
-                if sum(l)==0:
-                    dir_probs.append(1/len(l))
-                else:
-                    dir_probs.append(l[dir_idx]/sum(l))
-            action = np.random.choice(np.flatnonzero(dir_probs == np.max(dir_probs)), 1)[0]
-        else:
-            action = self.directions_str.index(dir_to_go_str)
+            agent_id = np.random.choice(np.flatnonzero(path_lengths == np.min(path_lengths)), 1)[0]
+        print("Moving: " + str(agent_id))
+        #self.prev_agent_list.append(agent_id)
+        path = paths[agent_id]
+        dir_to_go_str = l2s([path[1][0] - path[0][0], path[1][1] - path[0][1]])
+        reverse_mapping = self.get_best_theory(agent_id)['input_reverse_mapping']
+        action = reverse_mapping[dir_to_go_str]
         self.last_action = action
-        self.prev_selected_char = agent_id
-        self.prev_selected_goal = goal_loc
         return action, 'exploit'
 
     # # # # # # # # # # # #
@@ -355,6 +304,19 @@ class InferSelfFoil:
             return False
         return map[int(loc[0]), int(loc[1])] in empty
 
+    def is_agent_mvt_consistent(self, theory, prev_obs, new_obs, action):
+        agent_id = theory['agent_id']
+        action_dir = theory['input_mapping'][action]
+        current_map = prev_obs['map'].copy()
+        prev_obj_pos = prev_obs['objects']
+        new_obj_pos = new_obs['objects']
+
+        # compute likelihood of agent movement
+        prev_pos = prev_obj_pos[agent_id]
+        new_pos = new_obj_pos[agent_id]
+        predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
+        return np.all(predicted_pos == new_pos)
+
     def get_best_theory(self, agent_id):
         theory_id = np.argmax(self.current_posterior_over_theories[agent_id])
         return self.theories[agent_id][theory_id]
@@ -379,14 +341,13 @@ class InferSelfFoil:
 
     def print_top(self, theories, probs):
         probs = copy.deepcopy(probs)
-        print("  Top mapping theory:")
-        print(self.key_success_counts)
-        #for agent_id in range(self.n_objs):
-            #print("agent:", agent_id)
-            #for _ in range(2):
-                #id = np.argmax(probs[agent_id])
-                #print("   action mapping: ", theories[agent_id][id]['input_mapping'], ", prob: ", probs[agent_id][id])
-                #probs[agent_id][id] = 0
+        print("  Top theories:")
+        for agent_id in range(self.n_objs):
+            print("agent:", agent_id)
+            for _ in range(2):
+                id = np.argmax(probs[agent_id])
+                print("   action mapping: ", theories[agent_id][id]['input_mapping'], ", prob: ", probs[agent_id][id])
+                probs[agent_id][id] = 0
 
     def render(self, true_agent=None, smooth=5):
         data = np.atleast_2d(np.array(self.history_posteriors_over_agents.copy()))

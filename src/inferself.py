@@ -6,13 +6,11 @@ import heapq
 import random
 
 #TODO
-#fix the map situation
 #how do we want to track char locs and possible goal locs?
 #should non-avatars be able to move into the goal?
 
-#once we choose one, when choosing an action, expected reward is the same for each, go by steps to reward?
-#min path to each goal?
-
+#assume self moves randomly if noise
+#assume non self chars move randomly or stay put
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
@@ -36,6 +34,7 @@ class InferSelf:
         self.history_posteriors_p_switch = [self.prior_p_switch]
         self.setup_theories()
         self.fig = None
+        self.avatar_noise = self.args['avatar_noise']
         self.noise_mean_prior = self.args['noise_prior']
         self.last_action = None
         #right now, theories includes each self/action mapping pair
@@ -97,23 +96,19 @@ class InferSelf:
 
     def update_objs_attended_to(self):
         if self.args['attention_bias']:
-            if self.args['n_objs_attended_to'] == 0:
-                if np.random.rand() < 0.9:
-                     self.objs_attended_to = np.random.choice(range(self.n_objs),
-                                                    p=self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories),
-                                                    size=1,
-                                                    replace=False)
-                else:
-                    self.objs_attended_to = []
+            if self.args['uniform_attention_bias']: 
+                probas = [1/self.n_objs] * self.n_objs
             else:
-                if self.args['uniform_attention_bias']: 
-                    probas = [1/self.n_objs] * self.n_objs
-                else:
-                    probas = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
-                self.objs_attended_to = np.random.choice(range(self.n_objs),
-                                                    p=probas,
-                                                    size=self.args['n_objs_attended_to'],
-                                                    replace=False)
+                probas = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
+            self.objs_attended_to = np.random.choice(range(self.n_objs),
+                                                p=probas,
+                                                size=self.args['n_objs_attended_to'],
+                                                replace=False)
+            #now attend to others w some prob
+            for i in range(self.n_objs):
+                if i not in self.objs_attended_to:
+                    if np.random.rand() < self.args['peripheral_attention_prob']:
+                        self.objs_attended_to = np.append(self.objs_attended_to, i)
         else:
             self.objs_attended_to = range(self.n_objs)
 
@@ -229,7 +224,6 @@ class InferSelf:
         # posterior of identity x noise is posterior of identity x posterior(noise | identity)
         # update parameters of the noise distribution for the current theory by incrementing alpha if observation is not consistent
         likelihoods = np.array([self.compute_likelihood(theory, prev_obs, new_obs, action) for theory in self.theories])
-
         if self.args['infer_switch']:
             # get the matrix of non-diagonal elements
             NonDiag = np.ones((self.n_theories, self.n_theories))
@@ -277,7 +271,6 @@ class InferSelf:
         else:
             posterior_p_switch = 0
             posterior_over_theories = prior_over_theories * (likelihoods ** self.args['likelihood_weight'])
-
         # fix probabilities: normalize / reset / clip
         if posterior_over_theories.sum() > 0:
             posterior_over_theories = np.asarray(posterior_over_theories).astype('float64')
@@ -316,9 +309,9 @@ class InferSelf:
         predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
         if agent_id in self.objs_attended_to:
             if np.all(predicted_pos == new_pos):
-                proba_movements.append(1 - self.get_noise_mean(theory))
+                proba_movements.append((1 - self.avatar_noise) + (self.avatar_noise/len(self.directions)))##self.get_noise_mean(theory))
             else:
-                proba_movements.append(self.get_noise_mean(theory))
+                proba_movements.append(self.avatar_noise/len(self.directions))#self.get_noise_mean(theory))
         # move the agent in the map
         current_map[prev_pos[0], prev_pos[1]] = 0
         current_map[new_pos[0], new_pos[1]] = 4
@@ -343,7 +336,11 @@ class InferSelf:
                 # add movement of that object in the map
                 current_map[prev_pos[0], prev_pos[1]] = 0
                 current_map[new_pos[0], new_pos[1]] = 8
-        return np.prod(proba_movements)
+        return np.prod(proba_movements) 
+    
+#the thing we're attending to: if it moves in an unexpected way, 
+#if it's the self, then we assign that prob 0.25
+#if it's not the self, we assign that prob 0.2 (could have moved or stayed put)
 
 
     # # # # # # # # # # # #
@@ -392,20 +389,19 @@ class InferSelf:
             intended_movements = []
             for obj_id, obj_pos in enumerate(prev_obs['objects']):
                 if obj_id == agent_id:
-                    #should sample this noise value?
-                    if np.random.rand() < self.get_noise_mean(theory):
-                        candidate_actions = sorted(set(range(5)) - set([action]))
+                    if np.random.rand() < self.avatar_noise:#self.get_noise_mean(theory):
+                        candidate_actions = list(range(4))#sorted(set(range(5)) - set([action])) #keep action in here?
                         effective_action = np.random.choice(candidate_actions)
-                        if effective_action < 4:
-                            action_dir = theory['input_mapping'][effective_action]
-                        else:
-                            action_dir = np.zeros(2)
+                        #if effective_action < 4:
+                        action_dir = theory['input_mapping'][effective_action]
+                        #else:
+                        #    action_dir = np.zeros(2)
                     else:
                         action_dir = theory['input_mapping'][action]
                     intended_movements.append(action_dir)
                 else:
                     dirs = self.directions + [[0, 0]]
-                    i_dir = np.random.choice(np.arange(len(dirs)), p=self.prior_npc_mvt[obj_id])
+                    i_dir = np.random.choice(np.arange(len(dirs)), p=self.prior_npc_mvt[obj_id]) #change this? 
                     intended_movements.append(dirs[i_dir])
             # update agent and bot positions
             map, positions = self.get_next_positions(prev_obs, intended_movements, agent_id)
@@ -472,9 +468,7 @@ class InferSelf:
         assert len(good_actions) > 0
         return good_actions
 
-
-
-#change this so pop doesn't uses most recent action as tie breaker
+    #change this so pop doesn't uses most recent action as tie breaker
     def run_astar(self, goal_loc, map, agent_pos, action_mapping):
         def heuristic_dist(loc, goal_loc):
             return abs(loc[0] - goal_loc[0]) + abs(loc[1] - goal_loc[1])

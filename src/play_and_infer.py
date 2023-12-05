@@ -1,22 +1,21 @@
 from copy import deepcopy
 import pygame
 import gym
-import skimage
+#import skimage
 from inferself import InferSelf
 from foil_inferself import InferSelfFoil
 from gym_gridworld import __init__
 import warnings
 warnings.filterwarnings("ignore") 
 
-ENV = 'logic-v0'
+#ENV = 'logic-v0'
 #ENV = 'contingency_u-v0'
 #ENV = 'changeAgent_u-7-v0'
 #ENV = 'logicExtended-v0'
 #ENV = 'contingency_u-shuffle-v0'
 
-#run this screenshot plots and send to josh
-
-
+ENV = 'contingency_noisy'
+#ENV = 'contingency_more_chars'
 #ENV = 'contingency-v0'
 #ENV = 'contingency-12-hard'
 #ENV = 'contingency-shuffle-v0' #infer mapping true
@@ -28,11 +27,12 @@ ARGS = dict(max_steps=2,
             # what to infer
             infer_mapping=False,
             infer_switch=False,
+            avatar_noise=0.25,
             # priors
             biased_action_mapping=False,
             biased_action_mapping_factor=100,
             bias_bot_mvt='uniform', # static or uniform
-            p_switch=1/7,
+            p_switch=0.01,#1/7,
             # learning strategies and biases
             likelihood_weight=1,
             explicit_resetting=False,
@@ -43,9 +43,11 @@ ARGS = dict(max_steps=2,
             explore_randomly=False,
             simulation='sampling',  # exhaustive or sampling
             n_simulations=10,  # number of simulations if sampling
-            attention_bias=False,
-            mapping_forgetting_factor=0.25,
+            attention_bias=True,
+            peripheral_attention_prob=0.0,
+            mapping_forgetting_factor=0.2,
             forget_action_mapping=False,
+            heuristic_noise=0.1,
             n_objs_attended_to=1,
             # explore-exploit
             verbose=True,
@@ -54,7 +56,7 @@ ARGS = dict(max_steps=2,
 
 def play_and_infer(env=ENV):
     screen = pygame.display.set_mode((100, 100))
-    print(env)
+    #print(env)
     env = gym.make(env)
     prev_obs, prev_info, prev_obs_state = env.reset()
     env.render(None)

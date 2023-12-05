@@ -160,7 +160,7 @@ def get_success_df(agents, envs):
                     success = ind_success[0]
                 else:
                     assert(False)
-                print(success)
+                #print(success)
                 temp.append(success)
                 if 'mode' in all_data[env][agent][seed].keys():
                     ind_exploit = np.argwhere(np.array(all_data[env][agent][seed]['mode'])=="exploit").flatten()
@@ -176,7 +176,7 @@ def get_success_df(agents, envs):
     df = pd.DataFrame.from_dict(data)
     df2 = pd.DataFrame.from_dict(get_exp_data(mean=True))
     #df2 = pd.read_csv('/Users/traceymills/Dropbox (MIT)/cocosci_projects/self/inferself/src/analyses/exp_data_means.csv')
-    print(len(df2[df2["agent"]=="human_asymptote"]))
+    #print(len(df2[df2["agent"]=="human_asymptote"]))
     df2["first_exploit"] = None
     df = pd.concat([df,df2], ignore_index = True)
     df = df[df["agent"].isin(agents)]
@@ -528,7 +528,7 @@ def print_stats(agents, envs):
     #plt.show()
 
 #probability of rejecting null hyp if it should be rejected, 1 - P(false negative)
-def power_analaysis():
+def power_analysis():
     #based on what we know of human variability,
     #how many people do we need to run to see sig. differences bt normal game type and GU game type
     #we know, for each game type:
@@ -569,11 +569,11 @@ def power_analaysis():
         # parameters for power analysis
         scale = (model_var_2 ** 0.5)/(model_var_1 ** 0.5)
         est_std = (hum_var_1**0.5)
-        print(est_std)
-        print(model_mean_2 - human_mean_1)
+        print("est std:", est_std)
+        print("est dif in means:", model_mean_2 - human_mean_1)
         #est_std = hum_var_1 + model_var_2) **0.5
         effect = (model_mean_2 - human_mean_1)/est_std #difference between the two means divided by the standard deviation
-        print(effect)
+        print("est effect:", effect)
         alpha = 0.05
         power = 0.8
         # perform power analysis
@@ -583,9 +583,9 @@ def power_analaysis():
         result = analysis.solve_power(effect_size=float(effect), power=float(power), nobs1=None, alpha=float(alpha), ratio=1.0, alternative='two-sided')
         print('Sample size: %.3f' % result)
 
-    analysis = TTestIndPower()
-    result = analysis.solve_power(effect_size=float(0.65), power=float(0.8), nobs1=float(20), alpha=float(0.05), ratio=None,  alternative='two-sided')
-    print(result)
+    #analysis = TTestIndPower()
+    #result = analysis.solve_power(effect_size=float(0.65), power=float(0.8), nobs1=float(20), alpha=float(0.05), ratio=None,  alternative='two-sided')
+    #print(result)
 
 def load_data(exp_names):
     all_data = {}
@@ -600,55 +600,8 @@ def load_data(exp_names):
                 all_data[env][agent] = temp[env][agent]
     return all_data
 
-def compare_data(agents, envs):
-    df = get_success_df(agents, envs)
-    df_new = pd.read_csv('/Users/traceymills/Dropbox (MIT)/cocosci_projects/self/game_app/data/success.csv')
-    df_new["agent"] = "humans_new"
-    df = pd.concat([df, df_new]) 
-    new_agent_name = {'base':'Meta-ePOMDP', 'foil':'Heuristic model', 'base_optimal':'implicit_base', 'base_prev':'base_prev', 'hardcoded':'hardcoded', 'human_asymptote':'Human og', 'humans_new':'Human new', 'rand_attention_bias_1': 'attention limit 1',  'forget_action_mapping_rand_attention_bias_1': 'Resource rational meta-ePOMDP', 'attention_bias_1': 'attention limit 1 (posterior)',  'forget_action_mapping_attention_bias_1': 'attention limit 1 (posterior), forget action mapping'}
-    df['agent'] = df['agent'].transform(lambda x: new_agent_name.get(x, x))
-    new_env_name = {"logic-v0": "Logic", "logic_u-v0": "Logic\ngoal uncertainty", "contingency-v0": "Contingency", "contingency_u-v0": "Contingency\ngoal uncertainty", 'contingency-shuffle-v0':'Switch Mappings', 'contingency_u-shuffle-v0':'Switch Mappings\ngoal uncertainty', 'changeAgent-7-v0':'Switch Embodiments', 'changeAgent_u-7-v0':'Switch Embodiments\ngoal uncertainty', "logicExtended-v0": "Logic (5)", 'contingencyExtended-v0':"Contingency (5)", 'contingencyExtended-shuffle-v0':"Switching Mappings (5)", 'changeAgentExtended-7-v0':'Switching Embodiments (5)'}
-    df['env'] = df['env'].transform(lambda x: new_env_name[x])
-    agent_order = ["Human og", "Human new", "Resource rational meta-ePOMDP", "Meta-ePOMDP"]
-    env_order = [new_env_name.get(e, e) for e in envs]
-    ax = sns.barplot(data=df, x='env', y='success',hue='agent', hue_order=agent_order, palette='viridis', edgecolor='black', order = env_order)
-    plt.ylabel("Average no. steps to complete level", fontweight="bold", fontsize=15)
-    #max_val = max(df.groupby(['env', 'agent'])["success"].mean())
-    plt.xticks(fontsize=9)
-    plt.xlabel("Game type", fontweight="bold", fontsize=15)
-    """
-    pairs = []
-    pvalues = []
-    print(pd.unique(df["agent"]))
-    to_compare = [('Human og', 'Human new'), ('Human new', 'Resource rational meta-ePOMDP')] #('Human asymptote', 'Heuristic model')]
-    for env in env_order:
-        if "goal" in env:
-            to_compare = [('Human new', 'Resource rational meta-ePOMDP')]
-        else:
-            to_compare = [('Human og', 'Human new'), ('Human new', 'Resource rational meta-ePOMDP'), ('Human og', 'Resource rational meta-ePOMDP')]
-        for pair in to_compare:
-            pairs.append([(env, pair[0]), (env, pair[1])])
-            val = scipy.stats.ttest_ind(df[(df['agent']==pair[0]) & (df['env']==env)]["success"], df[(df['agent']==pair[1]) & (df['env']==env)]["success"], equal_var=False)[1]
-            if val < 0.0001:
-                pvalues.append("****")
-            elif val < 0.001:
-                pvalues.append("***")
-            elif val < 0.01:
-                pvalues.append("**")
-            elif val < 0.05:
-                pvalues.append("*")
-            else:
-                pvalues.append('p=' + "{:.2f}".format(val).lstrip('0'))
-            print(pvalues)
-    params = {'data':df, 'x':'env', 'y':'success', 'hue':'agent', 'hue_order':agent_order, 'order':env_order, 'palette':'viridis', 'edgecolor':'black'}
-    ann = Annotator(ax, pairs, **params)
-    ann.set_custom_annotations(pvalues)
-    ann.annotate()
-    """
-    plt.legend(title="")#, title_fontweight='bold')
-    plt.gcf().set_size_inches(17, 6)
-    #plt.savefig(plot_dir + "pilot.png")
-    plt.show()
+
+
     
     
     
@@ -800,49 +753,6 @@ def plot_mean_success_new(agents, envs, f=""):
     plt.savefig(plot_dir + "bar_and_points" + f + ".png", dpi=1000)
     plt.show()
 
-#compare humans and rr model in change agent uncertainty game
-def compare_humans_and_rr_cau():
-    def custom2(y, **kwargs):
-        ym = y[asymptote:].mean()
-        plt.axhline(ym, alpha=0.5)
-        plt.annotate(f"mean: {ym:.1f}", xy=(1,900), color="blue",
-                    xycoords=plt.gca().get_yaxis_transform(), ha="right")
-    def custom1(y, **kwargs):
-        ym = y.mean()
-        plt.axhline(ym, alpha=0.5, color="green")
-        plt.annotate(f"mean: {ym:.1f}", xy=(1,800), color="green",
-                    xycoords=plt.gca().get_yaxis_transform(), ha="right")
-    
-    model_data = load_data(['rr_changeAgent_u.pkl'])["changeAgent_u-7-v0_False"]['forget_action_mapping_rand_attention_bias_1']
-    model_steps = [np.argwhere(np.array(model_data[str(i)]['success'])).flatten()[0] for i in range(100)]
-    
-    plot_d = {"subj_steps":[],"model_steps":[],"level":[],"subj":[]}
-    with open('../../../game_app/data/trials.json') as f:
-        trials = json.load(f)
-    trials = [t for t in trials if "test" not in t["subject_id"]]
-    subjects = [t for t in trials if t["game_type"]=="change_agent_u"]
-    for i, subj in enumerate(subjects):
-        subj_steps = subj["game_data"]["steps"]
-        n = len(subj_steps)
-        plot_d["subj_steps"] = plot_d["subj_steps"] + subj_steps
-        plot_d["model_steps"] = plot_d["model_steps"] + model_steps[:n]
-        plot_d["subj"] = plot_d["subj"] + [i]*n
-        plot_d["level"] = plot_d["level"] + list(range(n))
-    #plot grid of rr model on each, then each subj
-    td = pd.DataFrame.from_dict(plot_d)
-    g = sns.FacetGrid(td, col="subj", ylim=(0,1000), col_wrap=5)
-    g.map_dataframe(sns.lineplot, x="level", y="subj_steps")
-    g = g.map(custom2, 'subj_steps')
-    #g.map(lambda y, **kw: plt.axhline(y[20:].mean()), 'subj_steps', alpha=0.5)
-    g.map_dataframe(sns.lineplot, x="level", y="model_steps", color='green', alpha=0.5) 
-    g = g.map(custom1, 'model_steps')
-    g.set_xlabels('level')
-    g.set_ylabels('no. steps to success')
-    #g.map(lambda y, **kw: plt.axhline(y.mean(), color="green"), 'model_steps', alpha=0.5) 
-    plt.show()
-
-
-
 #want to look at num steps before finding correct avatar
 def compare_centering_speed(f):
     #want csv with
@@ -989,15 +899,112 @@ def compare_centering_speed(f):
     plt.gcf().set_size_inches(12, 6)
     #plt.savefig(plot_dir + "sf_comp" + f + ".png", dpi=1000)
 
+
+
+#compare humans and rr model in change agent uncertainty game
+def compare_humans_and_rr_cau():
+    def custom2(y, **kwargs):
+        ym = y[asymptote:].mean()
+        plt.axhline(ym, alpha=0.5)
+        plt.annotate(f"mean: {ym:.1f}", xy=(1,900), color="blue",
+                    xycoords=plt.gca().get_yaxis_transform(), ha="right")
+    def custom1(y, **kwargs):
+        ym = y.mean()
+        plt.axhline(ym, alpha=0.5, color="green")
+        plt.annotate(f"mean: {ym:.1f}", xy=(1,800), color="green",
+                    xycoords=plt.gca().get_yaxis_transform(), ha="right")
+    
+    model_data = load_data(['rr_changeAgent_u.pkl'])["changeAgent_u-7-v0_False"]['forget_action_mapping_rand_attention_bias_1']
+    model_steps = [np.argwhere(np.array(model_data[str(i)]['success'])).flatten()[0] for i in range(100)]
+    
+    plot_d = {"subj_steps":[],"model_steps":[],"level":[],"subj":[]}
+    with open('../../../game_app/data/trials.json') as f:
+        trials = json.load(f)
+    trials = [t for t in trials if "test" not in t["subject_id"]]
+    subjects = [t for t in trials if t["game_type"]=="change_agent_u"]
+    for i, subj in enumerate(subjects):
+        subj_steps = subj["game_data"]["steps"]
+        n = len(subj_steps)
+        plot_d["subj_steps"] = plot_d["subj_steps"] + subj_steps
+        plot_d["model_steps"] = plot_d["model_steps"] + model_steps[:n]
+        plot_d["subj"] = plot_d["subj"] + [i]*n
+        plot_d["level"] = plot_d["level"] + list(range(n))
+    #plot grid of rr model on each, then each subj
+    td = pd.DataFrame.from_dict(plot_d)
+    g = sns.FacetGrid(td, col="subj", ylim=(0,1000), col_wrap=5)
+    g.map_dataframe(sns.lineplot, x="level", y="subj_steps")
+    g = g.map(custom2, 'subj_steps')
+    #g.map(lambda y, **kw: plt.axhline(y[20:].mean()), 'subj_steps', alpha=0.5)
+    g.map_dataframe(sns.lineplot, x="level", y="model_steps", color='green', alpha=0.5) 
+    g = g.map(custom1, 'model_steps')
+    g.set_xlabels('level')
+    g.set_ylabels('no. steps to success')
+    #g.map(lambda y, **kw: plt.axhline(y.mean(), color="green"), 'model_steps', alpha=0.5) 
+    plt.show()
+
+
+
+def compare_data(agents, envs):
+    df = get_success_df(agents, envs)
+    df_new = pd.read_csv('/Users/traceymills/Dropbox (MIT)/cocosci_projects/self/game_app/data/success.csv')
+    df_new["agent"] = "humans_new"
+    df = pd.concat([df, df_new]) 
+    new_agent_name = {'base':'Meta-ePOMDP', 'foil':'Heuristic model', 'base_optimal':'implicit_base', 'base_prev':'base_prev', 'hardcoded':'hardcoded', 'human_asymptote':'Human og', 'humans_new':'Human new', 'rand_attention_bias_1': 'attention limit 1',  'forget_action_mapping_rand_attention_bias_1': 'Resource rational meta-ePOMDP', 'attention_bias_1': 'attention limit 1 (posterior)',  'forget_action_mapping_attention_bias_1': 'attention limit 1 (posterior), forget action mapping'}
+    df['agent'] = df['agent'].transform(lambda x: new_agent_name.get(x, x))
+    new_env_name = {"logic-v0": "Logic", "logic_u-v0": "Logic\ngoal uncertainty", "contingency-v0": "Contingency", "contingency_u-v0": "Contingency\ngoal uncertainty", 'contingency-shuffle-v0':'Switch Mappings', 'contingency_u-shuffle-v0':'Switch Mappings\ngoal uncertainty', 'changeAgent-7-v0':'Switch Embodiments', 'changeAgent_u-7-v0':'Switch Embodiments\ngoal uncertainty', "logicExtended-v0": "Logic (5)", 'contingencyExtended-v0':"Contingency (5)", 'contingencyExtended-shuffle-v0':"Switching Mappings (5)", 'changeAgentExtended-7-v0':'Switching Embodiments (5)'}
+    df['env'] = df['env'].transform(lambda x: new_env_name[x])
+    agent_order = ["Human og", "Human new", "Resource rational meta-ePOMDP", "Meta-ePOMDP"]
+    env_order = [new_env_name.get(e, e) for e in envs]
+    ax = sns.barplot(data=df, x='env', y='success',hue='agent', hue_order=agent_order, palette='viridis', edgecolor='black', order = env_order)
+    plt.ylabel("Average no. steps to complete level", fontweight="bold", fontsize=15)
+    #max_val = max(df.groupby(['env', 'agent'])["success"].mean())
+    plt.xticks(fontsize=9)
+    plt.xlabel("Game type", fontweight="bold", fontsize=15)
+    """
+    pairs = []
+    pvalues = []
+    print(pd.unique(df["agent"]))
+    to_compare = [('Human og', 'Human new'), ('Human new', 'Resource rational meta-ePOMDP')] #('Human asymptote', 'Heuristic model')]
+    for env in env_order:
+        if "goal" in env:
+            to_compare = [('Human new', 'Resource rational meta-ePOMDP')]
+        else:
+            to_compare = [('Human og', 'Human new'), ('Human new', 'Resource rational meta-ePOMDP'), ('Human og', 'Resource rational meta-ePOMDP')]
+        for pair in to_compare:
+            pairs.append([(env, pair[0]), (env, pair[1])])
+            val = scipy.stats.ttest_ind(df[(df['agent']==pair[0]) & (df['env']==env)]["success"], df[(df['agent']==pair[1]) & (df['env']==env)]["success"], equal_var=False)[1]
+            if val < 0.0001:
+                pvalues.append("****")
+            elif val < 0.001:
+                pvalues.append("***")
+            elif val < 0.01:
+                pvalues.append("**")
+            elif val < 0.05:
+                pvalues.append("*")
+            else:
+                pvalues.append('p=' + "{:.2f}".format(val).lstrip('0'))
+            print(pvalues)
+    params = {'data':df, 'x':'env', 'y':'success', 'hue':'agent', 'hue_order':agent_order, 'order':env_order, 'palette':'viridis', 'edgecolor':'black'}
+    ann = Annotator(ax, pairs, **params)
+    ann.set_custom_annotations(pvalues)
+    ann.annotate()
+    """
+    plt.legend(title="")#, title_fontweight='bold')
+    plt.gcf().set_size_inches(17, 6)
+    #plt.savefig(plot_dir + "pilot.png")
+    plt.show()
+
+
 if __name__ == "__main__": 
     #get_exp_data(mean=True)
     #compare_humans_and_rr_cau()
     envs = ['logic-v0', 'contingency-v0', 'contingency-shuffle-v0', 'changeAgent-7-v0']
-    #envs += ['logic_u-v0', 'contingency_u-v0', 'contingency_u-shuffle-v0', 'changeAgent_u-7-v0']
+    envs += ['logic_u-v0', 'contingency_u-v0', 'contingency_u-shuffle-v0', 'changeAgent_u-7-v0']
     agents = ['human_asymptote', 'forget_action_mapping_rand_attention_bias_1', 'base', 'foil']
 
-    all_data = load_data(['exp.pkl'])
-    print_stats(agents, envs)
+    all_data = load_data(['new_exp2.pkl'])
+    power_analysis()
+    #print_stats(agents, envs)
     #make_heatmap_data()
     #compare_data(agents, envs)
     #plot_each_game()

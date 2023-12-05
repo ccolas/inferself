@@ -7,10 +7,10 @@ import pandas as pd
 import scipy
 import json
 from statannotations.Annotator import Annotator
-import rpy2.robjects as robjects
-from rpy2.robjects import r, pandas2ri
-from rpy2.robjects.packages import importr
-pandas2ri.activate()
+#import rpy2.robjects as robjects
+#from rpy2.robjects import r, pandas2ri
+#from rpy2.robjects.packages import importr
+#pandas2ri.activate()
 
 
 asymptote = 35
@@ -22,16 +22,21 @@ plot_dir = "/Users/traceymills/Dropbox (MIT)/cocosci_projects/self/inferself/src
 
 def get_human_data():
     data = []
-    folder_to_env_name = {'logic_game/':"Logic", 'contingency_game/':"Contingency", 'contingency_game_shuffled_1/':'Switching Mappings', 'change_agent_game/':'Switching Embodiments'}
+    folder_to_env_name = {'logic_game/':"Logic", 'contingency_game/':"Contingency", 'contingency_game_shuffled_1/':'Switching Mappings', 'change_agent_game/':'Switching Embodiments (7)'}
     for folder, env_name in folder_to_env_name.items():
+        i=0
         for fname in os.listdir(human_data_path + folder + 'human/'):
             if fname.startswith('.'):
                 continue
             with open(human_data_path + folder + 'human/' + fname) as f:
                 subj = json.load(f)
-            subj_mean = np.mean(subj['data']['steps'][asymptote:])
-            data.append({'env':env_name, 'agent':'Humans', 'steps':subj_mean})
+            for (level, level_steps) in enumerate(subj['data']['steps'][asymptote:]):
+                data.append({'env':env_name, 'agent':'Humans', 'steps':level_steps, 'seed':i, 'level':level})
+            i=i+1
     df = pd.DataFrame.from_dict(data)
+    print(df.head())
+    df = df.groupby(['agent', 'env', 'seed'], as_index=False)['steps'].mean()
+    print(df.head())
     return df
 
 def get_human_data_centering():
@@ -49,46 +54,112 @@ def get_human_data_centering():
         df = pd.concat([df, env_data])
     return df
 
-def get_model_data():
+def get_model_data(path):
+    mode=1
     agent_names = {'base':'Meta-ePOMDP', 'foil':'Proximity heuristic', 'forget_action_mapping_rand_attention_bias_1': 'Resource-limited meta-ePOMDP'}
-    env_names = {"logic-v0_False": "Logic", "contingency-v0_False": "Contingency", 'contingency-shuffle-v0_False':'Switching Mappings', 'changeAgent-7-v0_False':'Switching Embodiments'}
-    with open(model_data_path + 'exp.pkl', 'rb') as f:
-        exp_data = pickle.load(f)
-    data = []
-    for env in exp_data.keys():
-        for agent in exp_data[env].keys():
-            for seed in exp_data[env][agent].keys():
-                if seed =="args":
+    env_names = {"logic-v0_False": "Logic", "contingency-v0_False": "Contingency", 'contingency-shuffle-v0_False':'Switching Mappings', 'changeAgent-7-v0_False':'Switching Embodiments (7)', 'contingency_noisy-v0_False':'Noisy Contingency', 'contingency_less_chars-v0_False':'Contingency\n(2 characters)', 'contingency_more_chars-v0_False':'Contingency\n(6 characters)', 'contingency_8_chars-v0_False':'Contingency\n(8 characters)', 'changeAgent-10-v0_False':'Switching Embodiments (10)', "logic_u-v0_False": "Logic\ngoal uncertainty", "contingency_u-v0_False": "Contingency\ngoal uncertainty",'contingency_u-shuffle-v0_False':'Switching Mappings\ngoal uncertainty', 'changeAgent_u-7-v0_False':'Switching Embodiments (7)\ngoal uncertainty', 'changeAgent_u-10-v0_False':'Switching Embodiments (10)\ngoal uncertainty'}
+    first=True
+        
+    for path in [model_data_path + 'test_new_rr.pkl', model_data_path + 'test.pkl', model_data_path + 'test8.pkl', model_data_path + 'test_new_rr_last.pkl', model_data_path + 'new_games.pkl']:
+        exp_data = {}
+        with open(path, 'rb') as f:
+            temp = pickle.load(f)
+        if path != (model_data_path + 'exp'):
+            temp = temp[list(temp.keys())[0]]
+        for env in temp.keys():
+            if path not in [model_data_path + 'test.pkl', model_data_path + 'test_new_rr.pkl']:
+                if env == 'contingency_noisy-v0_False':
                     continue
-                #get steps until successs
-                level_data = exp_data[env][agent][seed]
-                ind_success = np.argwhere(np.array(level_data['success'])).flatten()
-                steps = ind_success[0]
-                #get steps until centered
-                if env_names[env] in ["Contingency", "Switching Mappings"] and agent_names[agent] in ['Meta-ePOMDP', 'Resource-limited meta-ePOMDP']:
-                    true_self = level_data['true_self'][0]
-                    for t, char_probas in enumerate(level_data['all_self_probas']):
-                        if char_probas[true_self] == max(char_probas):
-                            sorted_probas = sorted(char_probas, reverse=True)
-                            if sorted_probas[0] > 1.5*sorted_probas[1]:
-                                sf_steps = t-1
-                                break
-                    if t==len(level_data['all_self_probas'])-1:
-                        sf_steps = None
-                else:
-                    sf_steps = None
-                data.append({'env':env_names[env], 'agent':agent_names[agent], 'sf_steps':sf_steps, 'steps':steps})
-                
-    df = pd.DataFrame.from_dict(data)
-    return df
+            exp_data[env] = temp[env]
+    
+        #add 8 chars
+        #with open(model_data_path + 'test8.pkl', 'rb') as f:
+        #    temp = pickle.load(f)
+        #temp = temp[list(temp.keys())[0]]
+        #exp_data['contingency_8_chars-v0_False'] = temp['contingency_8_chars-v0_False']
+        #replace noisy w correct prior
+        #with open(model_data_path + 'test.pkl', 'rb') as f:
+        #    temp = pickle.load(f)
+        #temp = temp[list(temp.keys())[0]]
+        #exp_data['contingency_noisy-v0_False'] = temp['contingency_noisy-v0_False']
+        data = []
+        for env in exp_data.keys():
+            for agent in exp_data[env].keys():
+                for seed in exp_data[env][agent].keys():
+                    if seed =="args":
+                        continue
+                    if mode==1:
+                        for level in exp_data[env][agent][seed].keys():
+                            #get steps until successs
+                            level_data = exp_data[env][agent][seed][level]
+                            ind_success = np.argwhere(np.array(level_data['success'])).flatten()
+                            
+                            if len(ind_success)==0:
+                                steps = 10000
+                            else:
+                                steps = ind_success[0]
+                            #get steps until centered
+                            if env_names[env] in ["Contingency", "Switching Mappings"] and agent_names.get(agent, agent) in ['Meta-ePOMDP', 'Resource-limited meta-ePOMDP']:
+                                true_self = level_data['true_self'][0]
+                                for t, char_probas in enumerate(level_data['all_self_probas']):
+                                    if char_probas[true_self] == max(char_probas):
+                                        sorted_probas = sorted(char_probas, reverse=True)
+                                        if sorted_probas[0] > 1.5*sorted_probas[1]:
+                                            sf_steps = t-1
+                                            break
+                                if t==len(level_data['all_self_probas'])-1:
+                                    sf_steps = None
+                            else:
+                                sf_steps = None
+                            data.append({'env':env_names[env], 'agent':agent_names.get(agent, agent), 'sf_steps':sf_steps, 'steps':steps, 'seed': seed, 'level':level})
+                    else:
+                        #get steps until successs
+                        level=""
+                        level_data = exp_data[env][agent][seed]
+                        ind_success = np.argwhere(np.array(level_data['success'])).flatten()
+                        
+                        if len(ind_success)==0:
+                            steps = 10000
+                        else:
+                            steps = ind_success[0]
+                        #get steps until centered
+                        if env_names[env] in ["Contingency", "Switching Mappings"] and agent_names[agent] in ['Meta-ePOMDP', 'Resource-limited meta-ePOMDP']:
+                            true_self = level_data['true_self'][0]
+                            for t, char_probas in enumerate(level_data['all_self_probas']):
+                                if char_probas[true_self] == max(char_probas):
+                                    sorted_probas = sorted(char_probas, reverse=True)
+                                    if sorted_probas[0] > 1.5*sorted_probas[1]:
+                                        sf_steps = t-1
+                                        break
+                            if t==len(level_data['all_self_probas'])-1:
+                                sf_steps = None
+                        else:
+                            sf_steps = None
+                        data.append({'env':env_names[env], 'agent':agent_names[agent], 'sf_steps':sf_steps, 'steps':steps, 'seed': seed, 'level':level})
+                        
+                        
+            df = pd.DataFrame.from_dict(data)
+            if first:
+                all_df = df
+                first=False
+            else:
+                all_df = pd.concat([all_df, df])
+    return all_df
 
 
 def plot_performance(df, save=False, annotate=False):
-    agent_order = ['Humans', 'Resource-limited meta-ePOMDP', 'Meta-ePOMDP', 'Proximity heuristic']
-    env_order = ['Logic', 'Contingency', 'Switching Mappings', 'Switching Embodiments']
-    ax = sns.barplot(data=df, x='env', y='steps',hue='agent', hue_order=agent_order, palette='viridis', edgecolor='black', order = env_order, alpha=0.9, ci=95)
+    agent_order = ['Humans', 'Resource-limited meta-ePOMDP', 'Meta-ePOMDP']#, 'Proximity heuristic']
+    agent_order = ['Humans', 'Resource-limited meta-ePOMDP', 'forget_action_mapping_rand_attention_bias_1,10', 'forget_action_mapping_rand_attention_bias_1,25', 'forget_action_mapping_rand_attention_bias_1,50', 'forget_action_mapping_rand_attention_bias_1,75', 'Meta-ePOMDP']#, 'Proximity heuristic']
+    #env_order = ['Logic', 'Contingency', 'Switching Mappings', 'Switching Embodiments (7)', 'Switching Embodiments (10)', 'Logic\ngoal uncertainty', 'Contingency\ngoal uncertainty', 'Switching Mappings\ngoal uncertainty', 'Switching Embodiments (7)\ngoal uncertainty', 'Switching Embodiments (10)\ngoal uncertainty']
+    #env_order = ['Switching Mappings', 'Switching Embodiments (7)', 'Switching Embodiments (10)', 'Switching Mappings\ngoal uncertainty', 'Switching Embodiments (7)\ngoal uncertainty', 'Switching Embodiments (10)\ngoal uncertainty']
+    env_order = ['Logic', 'Contingency', 'Switching Mappings', 'Switching Embodiments (7)', 'Switching Embodiments (10)', 'Contingency\ngoal uncertainty', 'Switching Mappings\ngoal uncertainty', 'Noisy Contingency', 'Contingency\n(2 characters)', 'Contingency\n(6 characters)', 'Contingency\n(8 characters)']
+    #within each agent type, within each seed, average across levels
+    #df = df.groupby(['agent', 'env', 'seed'], as_index=False)['steps'].mean()
+    #ax = sns.boxplot(data=df, x='env', y='steps',hue='agent', hue_order=agent_order, palette='viridis', order = env_order, showfliers=False)
+    plt.figure(figsize=(18, 6))
+    ax = sns.barplot(data=df, x='env', y='steps',hue='agent', hue_order=agent_order, palette='viridis', edgecolor='black', order = env_order, dodge=2.0, alpha=0.9, errorbar='sd')#ci=95)
     plt.ylabel("Average no. steps to complete level", fontweight="bold", fontsize=15)
-    plt.xticks(fontsize=12)
+    plt.xticks(fontsize=7)
     plt.xlabel("Game type", fontweight="bold", fontsize=15)
     if annotate:
         pairs = []
@@ -114,10 +185,13 @@ def plot_performance(df, save=False, annotate=False):
         ann.set_custom_annotations(pvalues)
         ann.annotate()
     plt.legend(title="")
-    plt.gcf().set_size_inches(12, 6)
-    if save:
-        plt.savefig(plot_dir + "performance.png", dpi=1000)
+    #plt.gcf().set_size_inches(12, 6)
+    #plt.figure(figsize=(16, 6))
+    #if save:
+    plt.savefig(plot_dir + "temp3.png", dpi=1000)
     plt.show()
+
+
 
 
 def stats_performance(df):
@@ -205,15 +279,43 @@ def stats_centering(df, hum_prev_df):
         print(scipy.stats.ttest_ind(sf_steps_human, sf_steps_rr, equal_var=True))
 
 
+def plot_temp(df):
+    print(df.head())
+    print(pd.unique(df["agent"]))
+    df = df[df["agent"]=="Proximity heuristic"]
+    g = sns.FacetGrid(df, col="env", col_wrap=3, height=4)
+    g.map(plt.hist, "steps")
+    #sns.histplot(data=df, x='env', y='steps')
+    """
+    agent_order = ['Humans', 'Resource-limited meta-ePOMDP', 'Meta-ePOMDP', 'Proximity heuristic']
+    env_order = ['Logic', 'Contingency', 'Switching Mappings', 'Switching Embodiments (7)', 'Switching Embodiments (10)']
+    ax = sns.barplot(data=df, x='env', y='steps',hue='agent', hue_order=agent_order, palette='viridis', edgecolor='black', order = env_order, alpha=0.9, ci=95)
+    plt.ylabel("Average no. steps to complete level", fontweight="bold", fontsize=15)
+    plt.xticks(fontsize=12)
+    plt.xlabel("Game type", fontweight="bold", fontsize=15)
+   
+    plt.legend(title="")
+    plt.gcf().set_size_inches(12, 6)
+    if save:
+        plt.savefig(plot_dir + "performance.png", dpi=1000)
+    """
+    plt.show()
+
 if __name__ == "__main__": 
-    with open(model_data_path + 'exp.pkl', 'rb') as f:
-        exp_data = pickle.load(f)
+    #with open(model_data_path + 'exp.pkl', 'rb') as f:
+    #    exp_data = pickle.load(f)
+    #with open(model_data_path + 'new_heur_exp.pkl', 'rb') as f:
+    #    exp_data = pickle.load(f)
+    #path = model_data_path + 'test8.pkl'
+    path = model_data_path + 'test_new_rr.pkl'
+    #path = model_data_path + 'exp.pkl'
     df_human = get_human_data()
-    df_model = get_model_data()
+    df_model = get_model_data(path)
     df = pd.concat([df_human, df_model], ignore_index=True)
-    #plot_performance(df, save=True)
-    stats_performance(df)
+    #plot_temp(df)
+    plot_performance(df, save=False)
+    #stats_performance(df)
     #df_human_centering = get_human_data_centering()
     #df_centering = pd.concat([df_human_centering, df_model], ignore_index=True)
-    #plot_centering(df_centering, save=True)
+    #plot_centering(df_centering, save=False)
     #stats_centering(df_centering, df_human)
