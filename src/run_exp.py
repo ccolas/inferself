@@ -3,50 +3,15 @@ from copy import deepcopy
 import pickle
 import os
 import gym
-import gym_gridworld
 from inferself import InferSelf
-from foil_inferself import InferSelfFoil
+from heuristic import Heuristic
 import sys
-# from inferself_noiseless import InferSelfNoiseless
-import csv
-
-
+import random
 
 n_seeds = 20
-n_levels = 66
+n_levels = 40
 
-#envs = ['logic_u-v0','contingency_u-v0', 'contingency_u-shuffle-v0',  'changeAgent_u-7-v0', 'changeAgent_u-10-v0']
-env_sets = [['contingency_8_chars-v0'],
-            ['contingency_noisy-v0'],
-            ['contingency_less_chars-v0', 'logic-v0'],
-            ['contingency_more_chars-v0'], 
-            ['contingency-v0'],
-            ['contingency-shuffle-v0'],
-            ['changeAgent-7-v0'],
-            ['changeAgent-10-v0'],
-            ['contingency_u-v0'],
-            ['contingency_u-shuffle-v0']]
-
-agents_sets = [['forget_action_mapping_rand_attention_bias_1,0', 'forget_action_mapping_rand_attention_bias_1,10'],
-          ['forget_action_mapping_rand_attention_bias_1,25', 'forget_action_mapping_rand_attention_bias_1,50'],
-          ['forget_action_mapping_rand_attention_bias_1,75', 'base']]
-
-
-
-
-"""
-for nm in ['logic', 'contingency', 'contingency-shuffle', 'changeAgent-7']:
-    envs.append(nm + '-5-easy')
-    envs.append(nm + '-5-hard')
-    envs.append(nm + '-8-easy')
-    envs.append(nm + '-8-hard')
-    envs.append(nm + '-12-easy')
-    envs.append(nm + '-12-hard')
-"""
-
-explore_exploit = [False]
-
-def get_args(env, agent, explore_only=False):
+def get_args(env, agent):
     args = dict(max_steps=2,
                 # what to infer
                 infer_mapping=False,
@@ -59,7 +24,6 @@ def get_args(env, agent, explore_only=False):
                 # learning strategies and biases
                 likelihood_weight=1,
                 explicit_resetting=False,
-                # noise_prior_beta=[1, 15],
                 noise_prior=0.01,
                 avatar_noise=0.01,
                 # exploration
@@ -67,21 +31,20 @@ def get_args(env, agent, explore_only=False):
                 explore_randomly=False,
                 simulation='sampling',  # exhaustive or sampling
                 n_simulations=10,  # number of simulations if sampling
-                uniform_attention_bias=True,
+                uniform_attention_bias=False,
                 attention_bias=False,
-                mapping_forgetting_factor=0.2,
+                mapping_forgetting_factor=None,
                 forget_action_mapping=False,
                 n_objs_attended_to=4,
-                peripheral_attention_prob = 0.1,
+                peripheral_attention_prob = 0.05,
                 heuristic_noise = 0.1,
-                is_foil=False,
+                is_heuristic=False,
                 check_oob = False,
-                # explore-exploit
-                explore_exploit_threshold=0.5,  # confidence threshold for agent id
+                conf_threshold=1.5,
                 verbose=False,
                 )
-    if 'foil' in agent:
-        args['is_foil'] = True
+    if 'heuristic' in agent:
+        args['is_heuristic'] = True
     if 'shuffle' not in env:
         args['infer_mapping'] = False
     else:
@@ -129,40 +92,37 @@ def get_prob_of_true(s, true_agent, true_mapping):
             return s.current_posterior_over_theories[i_theory], s.get_noise_mean(s.theories[i_theory])
 
 
-def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
+def run_agent_in_env(env_name, agent, threshold, keys, time_limit, ff):
     # run exp for this env/arg set
-    args = get_args(env_name, agent, explore_only)
+    args = get_args(env_name, agent)
+    args['conf_threshold'] = threshold
+    args['mapping_forgetting_factor'] = ff
     if 'changeAgent' in env_name:
         args['p_switch'] = 1/7
     else:
         args['p_switch'] = 0.01
 
     if 'noisy' in env_name:
-        args['avatar_noise'] = 0.25
+        args['avatar_noise'] = 1/3
     else:
         args['avatar_noise'] = 0.01
 
-    if args['is_foil'] and 'contingency' in env_name:
+    if args['is_heuristic'] and 'contingency' in env_name:
         args['check_oob'] = True
     
     env = gym.make(env_name)
     data = dict(zip(keys, [[] for _ in range(len(keys))]))
-    if args['explore_only']:
-        env.unwrapped.no_goal = True
     prev_obs, prev_info, prev_obs_state = env.reset()
     args.update(n_objs=env.n_candidates)
-    if args['is_foil']:
-         inferself = InferSelfFoil(obs=prev_obs_state,
+    if args['is_heuristic']:
+        inferself = Heuristic(obs=prev_obs_state,
                                args=args)
-         
     else:
         inferself = InferSelf(obs=prev_obs_state,
                           args=args)
     previous_agent = None
     
-    for t in range(time_limit):
-        # print(t)
-        
+    for t in range(time_limit):        
         mode=None
         change = False
         info = {}
@@ -171,13 +131,9 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
         obs_state = prev_obs_state
         done=False
         if t>0:
-            if 'oneswitch' in env_name:
-                if t < 30:
-                    mode = 1
             action, action_mode = inferself.get_action(prev_obs_state, enforce_mode=mode)
             obs, rew, done, info, obs_state = env.step(action)
             inferself.update_theory(prev_obs_state, obs_state, action)
-            
             # did the agent change?
             if previous_agent != env.unwrapped.agent_id and t > 0:
                 change = True
@@ -185,8 +141,7 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
                 change = False
             previous_agent = env.unwrapped.agent_id
 
-
-        if args['is_foil']:
+        if args['is_heuristic']:
             new_data = dict(tpt=t,
                         agent_change=change,
                         success=info.get("success", False),
@@ -236,13 +191,14 @@ def run_agent_in_env(env_name, agent, explore_only, keys, time_limit):
     return data
 
 
-def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="output/", overwrite=False,
+def run_experiment(expe_name, envs, agents, threshold, ff, save_dir="output/", overwrite=False,
                    time_limit=10000):
-    data_path = save_dir + exp_name + '.pkl'
-    print(f'Running experiment {exp_name}, saving to {data_path}')
+    data_path = save_dir + expe_name + '.pkl'
+    print(f'Running experiment {expe_name}, saving to {data_path}')
 
     keys = ['tpt', 'success', 'obj_pos', 'map', 'action', 'true_self', 'all_self_probas', 'true_mapping', 'all_mapping_probas', 'agent_found',
             'true_theory_probas', 'true_theory_noise_mean', 'top_theory', 'top_theory_proba', 'agent_change', 'p_switch', 'mode']
+    
     # dict with all data
     data = dict()
 
@@ -251,34 +207,37 @@ def run_experiment(exp_name, envs, agents, explore_exploit, save_dir="output/", 
         if os.path.exists(data_path):
             with open(data_path, 'rb') as f:
                 data = pickle.load(f)
+                
     if expe_name not in data.keys():
         data[expe_name] = dict()
+        
     # loop over environments, agents and seeds
-    for explore_only in explore_exploit:
-        for i_env, env_name in enumerate(envs):
-            env_name_dict = env_name + '_' + str(explore_only)
-            if env_name_dict not in data[expe_name].keys(): data[expe_name][env_name_dict] = dict()
-            print(f"  Env: {env_name_dict} ({i_env + 1} / {len(envs)})")
-            for i_agent, agent in enumerate(agents):
-                print(f"    Agent: {agent} ({i_agent + 1} / {len(agents)})")
-                if agent not in data[expe_name][env_name_dict].keys(): data[expe_name][env_name_dict][agent] = dict()
-                
-                data[expe_name][env_name_dict][agent]["args"] = get_args(env_name, agent, explore_only)
-                for s in range(n_seeds):
-                    print(f'      Seed {s + 1} / {n_seeds}')
-                    if str(s) not in data[expe_name][env_name_dict][agent].keys(): data[expe_name][env_name_dict][agent][str(s)] = dict()
-                    for l in range(n_levels):
-                        print(f'     Level {l + 1} / {n_levels}')
-                        data[expe_name][env_name_dict][agent][str(s)][str(l)] = run_agent_in_env(env_name, agent, explore_only, keys, time_limit)
-                        with open(data_path, 'wb') as f:
-                            pickle.dump(data, f)
+    for i_env, env_name in enumerate(envs):
+        env_name_dict = env_name
+        if env_name_dict not in data[expe_name].keys(): data[expe_name][env_name_dict] = dict()
+        print(f"  Env: {env_name_dict} ({i_env + 1} / {len(envs)})")
+        for i_agent, agent in enumerate(agents):
+            print(f"    Agent: {agent} ({i_agent + 1} / {len(agents)})")
+            if agent not in data[expe_name][env_name_dict].keys(): data[expe_name][env_name_dict][agent] = dict()
+            
+            data[expe_name][env_name_dict][agent]["args"] = get_args(env_name, agent)
+            for s in range(n_seeds):
+                print(f'      Seed {s + 1} / {n_seeds}')
+                np.random.seed(s)
+                random.seed(s)
+                if str(s) not in data[expe_name][env_name_dict][agent].keys(): data[expe_name][env_name_dict][agent][str(s)] = dict()
+                for l in range(n_levels):
+                    print(f'     Level {l + 1} / {n_levels}')
+                    data[expe_name][env_name_dict][agent][str(s)][str(l)] = run_agent_in_env(env_name, agent, threshold, keys, time_limit, ff)
+                    level_data = data[expe_name][env_name_dict][agent][str(s)][str(l)]
+                    print(np.argwhere(np.array(level_data['success'])).flatten())
+                    with open(data_path, 'wb') as f:
+                        pickle.dump(data, f)
 
 
 if __name__ == '__main__':
-    env_idx = sys.argv[0]
-    agent_idx = sys.argv[1]
-    expe_name = str(env_idx) + "_" + str(agent_idx) 
-    envs = env_sets[env_idx]
-    agents = agent_sets[env_idx]
-    run_experiment(exp_name=expe_name, envs=envs, agents=agents, explore_exploit=explore_exploit, savedir="server_output/", overwrite=False)
+    expe_name = "exp"
+    envs = ['logic-v0', 'logic_u-v0', 'contingency-v0', 'contingency_u-v0', 'contingency_noisy-v0', 'contingency-shuffle-v0', 'contingency_u-shuffle-v0', 'contingency_less_chars-v0', 'contingency_more_chars-v0', 'contingency_8_chars-v0', 'changeAgent-7-v0', 'changeAgent_u-7-v0', 'changeAgent-10-v0']
+    agents = ['base', 'forget_action_mapping_rand_attention_bias_1,5', 'heuristic']
+    run_experiment(expe_name=expe_name, envs=envs, agents=agents, threshold=1.5, ff=0.4)
 

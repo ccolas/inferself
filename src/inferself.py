@@ -5,31 +5,31 @@ import matplotlib.pyplot as plt
 import heapq
 import random
 
-#TODO
-#how do we want to track char locs and possible goal locs?
-#should non-avatars be able to move into the goal?
-
-#assume self moves randomly if noise
-#assume non self chars move randomly or stay put
+"""
+mePOMDP agent for the Avatar Games
+Attempts to infer avatar identity
+When confident in identity, moves avatar towards (possible) goal
+"""
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
           '#7f7f7f', '#bcbd22', '#17becf']
-poss_goal_num = 2
+poss_goal_num = 2 # number indicating a possible goal in the grid
 
 class InferSelf:
     def __init__(self, obs, args):
         self.args = args
         self.prior_p_switch = args['p_switch']
-        self.n_objs = np.count_nonzero(obs['map'] == 8)#get from obs
+        self.n_objs = np.count_nonzero(obs['map'] == 8 )
         self.directions = [[-1, 0], [1, 0], [0, -1], [0, 1]] # up down left right
         self.directions_str = [l2s(l) for l in self.directions] # convert directions to string form
 
         if self.args['bias_bot_mvt'] == 'static':
-            self.prior_npc_mvt = np.tile(np.append(np.zeros(len(self.directions)), 1), (self.n_objs, 1))
+            self.prior_npc_mvt = np.tile(np.append(np.zeros(len(self.directions) + 1), 1), (self.n_objs, 1))
         elif self.args['bias_bot_mvt'] == 'uniform':
             self.prior_npc_mvt = np.full((self.n_objs, len(self.directions) + 1), 1 / (len(self.directions) + 1))
         else: raise NotImplementedError
 
+        self.stickiness_prob = 0.2
         self.history_posteriors_over_agents = [[1 /  self.n_objs for _ in range( self.n_objs)]]  # fill history with prior on agent identity
         self.history_posteriors_p_switch = [self.prior_p_switch]
         self.setup_theories()
@@ -37,8 +37,7 @@ class InferSelf:
         self.avatar_noise = self.args['avatar_noise']
         self.noise_mean_prior = self.args['noise_prior']
         self.last_action = None
-        #right now, theories includes each self/action mapping pair
-        #let's also have possible beliefs, which tracks for each theory, possible beliefs under that theory (ePOMDP)
+        # theories includes each self/action mapping pair and beliefs about world (goal location)
         self.setup_poss_beliefs(obs)
         
     def setup_poss_beliefs(self, obs):
@@ -70,8 +69,6 @@ class InferSelf:
                                 new_theory = dict(agent_id=agent_id,
                                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
-                                                  # noise_params_beta=self.args['noise_prior_beta'].copy(),
-                                                  # noise_params_discrete=self.args['noise_prior_discrete'].copy(),
                                                   p_switch=self.args['p_switch'])
                                 self.theories.append(new_theory)
             else:
@@ -80,8 +77,6 @@ class InferSelf:
                 new_theory = dict(agent_id=agent_id,
                                   input_mapping={0: dir0l, 1: dir1l, 2: dir2l, 3: dir3l},
                                   input_reverse_mapping={dir0: 0, dir1: 1, dir2: 2, dir3: 3},
-                                  # noise_params_beta=self.args['noise_prior_beta'].copy(),
-                                  # noise_params_discrete=self.args['noise_prior_discrete'].copy(),
                                   p_switch=self.args['p_switch'])
 
                 self.theories.append(new_theory)
@@ -92,19 +87,32 @@ class InferSelf:
             self.initial_prior_over_theories /= self.initial_prior_over_theories.sum()
         self.initial_prior_over_theories = self.initial_prior_over_theories
         self.reset_prior_over_theories()
+        self.objs_attended_to = []
         self.update_objs_attended_to()
 
     def update_objs_attended_to(self):
+        if len(self.objs_attended_to) == 0:
+            self.prev_objs_attended_to = []
+        else:
+            self.prev_objs_attended_to = list(self.objs_attended_to).copy()
         if self.args['attention_bias']:
             if self.args['uniform_attention_bias']: 
                 probas = [1/self.n_objs] * self.n_objs
+                self.objs_attended_to = np.random.choice(range(self.n_objs),
+                                    p=probas,
+                                    size=self.args['n_objs_attended_to'],
+                                    replace=False)
             else:
-                probas = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
-            self.objs_attended_to = np.random.choice(range(self.n_objs),
-                                                p=probas,
-                                                size=self.args['n_objs_attended_to'],
-                                                replace=False)
-            #now attend to others w some prob
+                # with some prob, choose from agents you attended to last time
+                if len(self.prev_objs_attended_to)>0 and np.random.rand() < self.stickiness_prob:
+                    self.objs_attended_to = np.random.choice(self.prev_objs_attended_to, self.args['n_objs_attended_to'])
+                # otherwise, choose with equal prob from highest posterior agents
+                else:                    
+                    post = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
+                    high_prob_chars = np.flatnonzero(post == np.max(post))
+                    assert(len(high_prob_chars)>=self.args['n_objs_attended_to'])
+                    self.objs_attended_to = np.random.choice(high_prob_chars, self.args['n_objs_attended_to'])
+            # additionally attend to others w some prob
             for i in range(self.n_objs):
                 if i not in self.objs_attended_to:
                     if np.random.rand() < self.args['peripheral_attention_prob']:
@@ -120,11 +128,11 @@ class InferSelf:
     # Running inference
     # # # # # # # # # # # # # # # #
     def update_theory(self, prev_obs, new_obs, action):
-        #update theory of self / aptness of ePOMDPs
+        # update theory of self / aptness of ePOMDPs
         self.current_posterior_over_theories, p_switch = self.compute_posteriors(prev_obs, new_obs, self.current_posterior_over_theories, action)
-        #update beliefs within dif ePOMDPs
+        # update beliefs within dif ePOMDPs
         self.poss_beliefs = self.compute_poss_beliefs(prev_obs, new_obs, self.theories, action)
-        #after updating, forget!
+        # after updating, forget action mapping
         if self.args['infer_mapping'] and self.args['forget_action_mapping']:
             self.forget_action_mapping()
 
@@ -148,8 +156,6 @@ class InferSelf:
                                   self.theories) if t['agent_id']==id])
 
     def forget_action_mapping(self):
-        #print(self.current_posterior_over_theories.sum())
-        #assert self.current_posterior_over_theories.sum() == 1
         for id in range(self.n_objs):
             theories = self.get_agent_theories(id)
             probs, agent_ids = self.get_agent_mapping_probs(id)
@@ -161,21 +167,8 @@ class InferSelf:
             (1 - self.args['mapping_forgetting_factor']) * probs
             if agent_prob > 0:
                 final_probs = final_probs / final_probs.sum() * agent_prob
-            #agent_prob = np.logsumexp(probs)
-            #init_probs = init_probs - (np.logsumexp(init_probs) + agent_prob)
-            #assert np.all(np.isclose(np.logsumexp(init_probs), agent_prob))
-            #final_probs = self.args['mapping_forgetting_factor'] * init_probs + \
-            #(1 - self.args['mapping_forgetting_factor']) * probs
-            #try:
-            #    final_probs = final_probs / final_probs.sum() * agent_prob
-            #    assert np.all(np.isclose(final_probs.sum(), agent_prob))
-            #except:
-            #    print(agent_prob)
-            #    print(final_probs.sum())
             assert np.all(np.isclose(final_probs.sum(), agent_prob))
             self.current_posterior_over_theories[agent_ids] = final_probs
-        # print(self.current_posterior_over_theories.sum())
-        # assert self.current_posterior_over_theories.sum() == 1
 
     def update_history_posterior_over_agents(self):
         posterior_over_agents = [0 for _ in range( self.n_objs)]
@@ -190,30 +183,24 @@ class InferSelf:
         for theory_id, theory in enumerate(theories):
             poss_beliefs[theory_id] = {}
             [locs, prior] = self.poss_beliefs[theory_id]['goal_locs']
-            #should pass in whole bel to lik, find joint lik of this happening
-            #poss_bel might include beliefs abt many dif things, should sample to determine lik?
-            #then, just compute prior * lik for each piece...
-            #same lik function as for theory, but now assume one self
-            
-            #basically, if the avatar is at the goal and nothing has happened, that is not the goal
             liks = np.zeros(len(locs))
-            #prob of what we see given that it is the goal
+            # prob of what we observe given that this loc is the goal
             for i, loc in enumerate(locs):
-                #avatar at this goal
+                # avatar at this goal
                 if np.all(new_obs['objects'][theory['agent_id']] == loc):
                     if new_obs['success']:
-                        #prob of success given goal and at goal is 1
+                        # prob of success given goal and at goal is 1
                         liks[i] = 1-self.get_noise_mean(theory)
                     else:
-                        #prob of not success given goal and at goal is 0
+                        # prob of not success given goal and at goal is 0
                         liks[i] = self.get_noise_mean(theory)
-                #avatar not at this goal
+                # avatar not at this goal
                 else:
                     if new_obs['success']:
-                        #prob of success given goal but not at goal
+                        # prob of success given goal but not at goal
                         liks[i] = self.get_noise_mean(theory)
                     else:
-                        #prob of no success given goal but not at goal
+                        # prob of no success given goal but not at goal
                         liks[i] = 1 - self.get_noise_mean(theory)
             post = prior * liks
             poss_beliefs[theory_id]['goal_locs'] = [locs, post/post.sum()]
@@ -246,19 +233,11 @@ class InferSelf:
             # compute proba of observing the new observation after switch / no switch given the theory after the switch
             prob_obs_switch = self.prior_p_switch * likelihoods  # no switch so the likelihood is the one under the previous theory
             # in case of a switch we need to reweight the likelihoods under the distribution of new theories
-            # likelihood_given_switch = np.array([np.dot(likelihoods, Trans[i]) for i in range(self.n_theories)])
-            # prob_obs_no_switch = self.prior_p_switch * likelihood_given_switch
             prob_obs_no_switch = (1 - self.prior_p_switch) * likelihoods
             # normalize
             norm_cst = (prob_obs_switch + prob_obs_no_switch).sum()
             prob_obs_no_switch /= norm_cst
             prob_obs_switch /= norm_cst
-            #
-            # prob_obs = prob_obs_no_switch + prob_obs_switch
-            # prob_theories = prob_theories_switch + prob_theories_no_switch
-            # posterior_over_theories = prob_obs * prob_theories
-            # norm_cst = posterior_over_theories.sum()
-            # posterior_over_theories /= norm_cst
 
             # compute posterior on p_switch for that step
             posterior_over_theories_with_switch = prob_theories_switch * prob_obs_switch / self.prior_p_switch
@@ -267,30 +246,16 @@ class InferSelf:
             posterior_p_switch = posterior_over_theories_with_switch.sum() / norm_cst
             posterior_over_theories = posterior_over_theories_without_switch + posterior_over_theories_with_switch
             posterior_over_theories / norm_cst
-            # stop = 1
         else:
             posterior_p_switch = 0
             posterior_over_theories = prior_over_theories * (likelihoods ** self.args['likelihood_weight'])
-        # fix probabilities: normalize / reset / clip
+        # normalize probabilities
         if posterior_over_theories.sum() > 0:
             posterior_over_theories = np.asarray(posterior_over_theories).astype('float64')
             posterior_over_theories = posterior_over_theories / posterior_over_theories.sum()  # normalize
 
-
-        # make sure we don't get perfect confidence because that prevents any further learning
-        
-        """
-        if np.max(posterior_over_theories) > 0.99:
-            posterior_over_theories[np.argmax(posterior_over_theories)] = 0.99
-            indexes = np.array([i for i in range(len(posterior_over_theories)) if i != np.argmax(posterior_over_theories)])
-            posterior_over_theories[indexes] = 0.01 / len(indexes)
-            posterior_over_theories = np.asarray(posterior_over_theories).astype('float64')
-            posterior_over_theories /= posterior_over_theories.sum()  # normalize
-        """
         posterior_over_theories = np.round(posterior_over_theories, 5)
         posterior_over_theories = fix_p(posterior_over_theories)
-        if posterior_over_theories.sum() != 1:
-            stop = 1
         return posterior_over_theories, posterior_p_switch
 
     def compute_likelihood(self, theory, prev_obs, new_obs, action):
@@ -309,13 +274,12 @@ class InferSelf:
         predicted_pos = self.next_obj_pos(prev_pos, action_dir, current_map, True)
         if agent_id in self.objs_attended_to:
             if np.all(predicted_pos == new_pos):
-                proba_movements.append((1 - self.avatar_noise) + (self.avatar_noise/len(self.directions)))##self.get_noise_mean(theory))
+                proba_movements.append((1 - self.avatar_noise) + (self.avatar_noise/len(self.directions)))
             else:
-                proba_movements.append(self.avatar_noise/len(self.directions))#self.get_noise_mean(theory))
+                proba_movements.append(self.avatar_noise/len(self.directions))
         # move the agent in the map
         current_map[prev_pos[0], prev_pos[1]] = 0
         current_map[new_pos[0], new_pos[1]] = 4
-
 
         for obj_id, prev_pos, new_pos in zip(range( self.n_objs), prev_obj_pos, new_obj_pos):
             if obj_id != agent_id:
@@ -338,15 +302,9 @@ class InferSelf:
                 current_map[new_pos[0], new_pos[1]] = 8
         return np.prod(proba_movements) 
     
-#the thing we're attending to: if it moves in an unexpected way, 
-#if it's the self, then we assign that prob 0.25
-#if it's not the self, we assign that prob 0.2 (could have moved or stayed put)
-
-
     # # # # # # # # # # # #
     # exploration
     # # # # # # # # # # # #
-
     def explore(self, prev_obs):
         # for each action, compute expected information gain
         action_scores = []
@@ -366,8 +324,6 @@ class InferSelf:
         obs_str, obs_prob, prev_obs, action, probas = inputs
         poss_obs = s2dict(obs_str)
         new_probas, p_switch = self.compute_posteriors(prev_obs, poss_obs, probas, action)
-        #info_gain = information_gain(probas, new_probas)
-        
         #probas over agents instead of agent x action mapping:
         agent_probas = self.get_posterior_over_agents(self.theories, probas)
         new_agent_probas = self.get_posterior_over_agents(self.theories, new_probas)
@@ -378,7 +334,6 @@ class InferSelf:
     def simulate(self, prev_obs, action, theories, probas):
         # given all theories about world and this action, what is the probability distribution over possible observations?
         weighted_obs = {}
-
         # sample observations (theory and bot movements)
         theory_ids = np.random.choice(np.arange(len(theories)), p=probas, size=self.args['n_simulations'])
         prob = 1 / self.args['n_simulations']
@@ -389,19 +344,16 @@ class InferSelf:
             intended_movements = []
             for obj_id, obj_pos in enumerate(prev_obs['objects']):
                 if obj_id == agent_id:
-                    if np.random.rand() < self.avatar_noise:#self.get_noise_mean(theory):
-                        candidate_actions = list(range(4))#sorted(set(range(5)) - set([action])) #keep action in here?
+                    if np.random.rand() < self.avatar_noise:
+                        candidate_actions = list(range(4))
                         effective_action = np.random.choice(candidate_actions)
-                        #if effective_action < 4:
                         action_dir = theory['input_mapping'][effective_action]
-                        #else:
-                        #    action_dir = np.zeros(2)
                     else:
                         action_dir = theory['input_mapping'][action]
                     intended_movements.append(action_dir)
                 else:
                     dirs = self.directions + [[0, 0]]
-                    i_dir = np.random.choice(np.arange(len(dirs)), p=self.prior_npc_mvt[obj_id]) #change this? 
+                    i_dir = np.random.choice(np.arange(len(dirs)), p=self.prior_npc_mvt[obj_id])
                     intended_movements.append(dirs[i_dir])
             # update agent and bot positions
             map, positions = self.get_next_positions(prev_obs, intended_movements, agent_id)
@@ -410,7 +362,6 @@ class InferSelf:
             [goal_locs, goal_loc_probs] = self.poss_beliefs[theory_id]['goal_locs']
             # is agent at goal?
             goal_idx = [i for i in range(len(goal_locs)) if np.all(goal_locs[i] == positions[agent_id])]
-            # noiseless rn
             if len(goal_idx) == 0:
                 success = 0
             else:
@@ -430,7 +381,6 @@ class InferSelf:
         prev_pos = obs['objects'][agent_id]
         next_pos = self.next_obj_pos(prev_pos, movements[agent_id], map, True)
         positions[agent_id] = next_pos
-        
         map[prev_pos[0], prev_pos[1]] = 0
         map[next_pos[0], next_pos[1]] = 4
         # update positions of the bots
@@ -447,10 +397,8 @@ class InferSelf:
     # # # # # # # # # # # #
     # exploitation
     # # # # # # # # # # # #
-
     def exploit_prev(self, obs):
         # this implements a greedy strategy towards the goal, given assumptions about the agent identity and the input mapping
-        # this only works in non-deceptive worlds (no obstacles)
         theory, theory_id = self.get_best_theory()
         agent_id = theory['agent_id']
         reverse_mapping = theory['input_reverse_mapping']
@@ -468,7 +416,6 @@ class InferSelf:
         assert len(good_actions) > 0
         return good_actions
 
-    #change this so pop doesn't uses most recent action as tie breaker
     def run_astar(self, goal_loc, map, agent_pos, action_mapping):
         def heuristic_dist(loc, goal_loc):
             return abs(loc[0] - goal_loc[0]) + abs(loc[1] - goal_loc[1])
@@ -479,18 +426,18 @@ class InferSelf:
         parent_actions[tuple(agent_pos)] = self.last_action
         g_costs = {}
         g_costs[tuple(agent_pos)] = 0
-        # Initialize the open and closed lists
+        # initialize the open and closed lists
         frontier = [[heuristic_dist(agent_pos, goal_loc), 0, agent_pos]]
         visited = set()
 
         iter = 0
         while frontier:
             iter=iter+1
-            #get lowest cost loc in open list
+            # get lowest cost loc in open list
             (_, a, current_loc) = heapq.heappop(frontier)
-            #add to closed set
+            # add to closed set
             visited.add(tuple(current_loc))
-            #if at goal, return path
+            # if at goal, return path
             if np.all(current_loc == goal_loc):
                 path = []
                 while current_loc:
@@ -499,21 +446,21 @@ class InferSelf:
                 path.reverse()
                 dir_to_go_str = l2s([path[1][0] - path[0][0], path[1][1] - path[0][1]])
                 return [action_mapping[dir_to_go_str]], len(path)
-            #get possible neighbors
+            # get possible neighbors
             poss_neighbors = [([current_loc[0]-1, current_loc[1]], 0), ([current_loc[0]+1, current_loc[1]], 1),
                                 ([current_loc[0], current_loc[1]-1], 2), ([current_loc[0], current_loc[1]+1], 3)]
             random.shuffle(poss_neighbors)
             for (i, (neighbor, action)) in enumerate(poss_neighbors):
-                #check if we can move to this neighbor
+                # check if we can move to this neighbor
                 can_move_there = self.is_empty(map, neighbor, agent=True)
                 if not(can_move_there):
-                    #if it's the goal, and another char is there, try to move there anyways
+                    # if it's the goal, and another char is there, try to move there anyways
                     if map[neighbor[0], neighbor[1]] == 8 and np.all(neighbor==goal_loc):
                         can_move_there = True
                 if not(can_move_there) or tuple(neighbor) in visited:
                     continue
                 new_g_cost = g_costs[tuple(current_loc)] + 1  # assuming each step has a cost of 1
-                #update 
+                # update 
                 if new_g_cost < g_costs.get(tuple(neighbor), float('inf')):
                     g_costs[tuple(neighbor)] = new_g_cost
                     f_cost = g_costs[tuple(neighbor)] + heuristic_dist(neighbor, goal_loc)
@@ -526,18 +473,15 @@ class InferSelf:
                         f_cost = f_cost + 1/100
                         g_costs[tuple(neighbor)] = g_costs[tuple(neighbor)] + 1/100
                     heapq.heappush(frontier, [f_cost, tie_breaker, neighbor])
-        # No path found
-        print("no path found...")
-        print(map)
-        print(agent_pos)
+        # no path found
         return [0], float('inf')
     
     def exploit(self, obs):
         (theory, theory_id) = self.get_best_theory()
         agent_id = theory['agent_id']
-        #get belief
+        # get belief
         [goal_locs, goal_loc_prob] = self.poss_beliefs[theory_id]['goal_locs']
-        #get most probable and break ties based on closeness
+        # get most probable and break ties based on closeness
         top_locs = goal_locs[np.argwhere(np.isclose(goal_loc_prob, np.max(goal_loc_prob))).flatten()]
         distances = []
         actions = []
@@ -554,7 +498,7 @@ class InferSelf:
     def do_explore(self):
         posterior_over_agents = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
         top = sorted(posterior_over_agents, reverse=True)[:2]
-        return(top[0]/top[1] < 1.5)
+        return(top[0]/top[1] < self.args['conf_threshold'])
 
     def get_action(self, obs, enforce_mode=None):
         # there are two modes of actions
@@ -605,27 +549,15 @@ class InferSelf:
 
     def next_obj_pos(self, prev_pos, action_dir, current_map, agent):
         predicted_pos = prev_pos + action_dir
-
-        if agent and self.agent_at_goal(current_map):
-            return prev_pos
-        elif self.is_empty(current_map, predicted_pos, agent=agent):
+        if self.is_empty(current_map, predicted_pos, agent=agent):
             return predicted_pos
         else:
             return prev_pos
-
-    #based off current beliefs about what the goal is
-    def agent_at_goal(self, current_map):
-        if self.mode == 'explore':
-            return False
-        else:
-            return False
-            #if self.poss_bel[]
-
-    #go
+        
     def is_empty(self, map, loc, agent=True):
         if agent: empty = [0, poss_goal_num]
         else: empty = [0, poss_goal_num]
-        #check for out of bounds
+        # check for out of bounds
         if (int(loc[0]) < 0) or (int(loc[0]) >= np.shape(map)[0]) or (int(loc[1]) < 0) or (int(loc[1]) >= np.shape(map)[1]):
             return False
         return map[int(loc[0]), int(loc[1])] in empty
@@ -637,7 +569,6 @@ class InferSelf:
         current_map = prev_obs['map'].copy()
         prev_obj_pos = prev_obs['objects']
         new_obj_pos = new_obs['objects']
-
         # compute likelihood of agent movement
         prev_pos = prev_obj_pos[agent_id]
         new_pos = new_obj_pos[agent_id]
@@ -645,7 +576,7 @@ class InferSelf:
         return np.all(predicted_pos == new_pos)
 
     def get_best_theory(self, get_proba=False):
-        theory_id = get_rand_idx(self.current_posterior_over_theories) #should be random
+        theory_id = get_rand_idx(self.current_posterior_over_theories)
         if get_proba:
             return self.theories[theory_id], theory_id, self.current_posterior_over_theories[theory_id]
         else:
@@ -654,12 +585,12 @@ class InferSelf:
     @property
     def n_theories(self):
         return len(self.theories)
+    
     @property
     def mode(self):
         posterior_over_agents = self.get_posterior_over_agents(self.theories, self.current_posterior_over_theories)
-        #return(np.max(posterior_over_agents) < self.args['explore_exploit_threshold'])
         top = sorted(posterior_over_agents, reverse=True)[:2]
-        if top[0]/top[1] < 1.5:
+        if top[0]/top[1] < self.args['conf_threshold']:
             return 'explore'
         else:
             return 'exploit'
@@ -688,17 +619,16 @@ class InferSelf:
 
     def get_mapping_probas(self):
         mapping_probs = np.zeros((len(self.directions), len(self.directions)))
-        #for each action, what's the prob of each direction
+        # for each action, what's the prob of each direction
         for action_idx in range(4):
             for i_theory, theory in enumerate(self.theories):
-                #find in directions
+                # find in directions
                 dir_idx = self.directions.index(theory['input_mapping'][action_idx])
                 mapping_probs[action_idx][dir_idx] += self.current_posterior_over_theories[i_theory]
         return mapping_probs
 
     def render(self, true_agent=None, smooth=5):
         data = np.atleast_2d(np.array(self.history_posteriors_over_agents.copy()))
-
         smooth_data = self.get_smooth_posterior_over_theories(smooth=smooth)
 
         if self.fig is None:
@@ -709,8 +639,6 @@ class InferSelf:
                 else:
                     col = COLORS[i]
                 self.ax.plot(d, c=col,  label=f'{i}')
-            #for i, d in zip(range(data.shape[1]), smooth_data.T):
-            #    self.ax.plot(d, linestyle='--', c=COLORS[i], label=f'{i} smoothed')
             if true_agent is not None:
                 self.ax.scatter(data.shape[0] - 1, 1, c=COLORS[true_agent])
             self.ax.plot(self.history_posteriors_p_switch, color='k', label='p_switch')
@@ -726,14 +654,10 @@ class InferSelf:
                 col = COLORS[i]
             self.ax.plot(d, c=col)
         self.ax.plot(self.history_posteriors_p_switch, color='k')
-        #for i, d in zip(range(data.shape[1]), smooth_data.T):
-        #    self.ax.plot(d, linestyle='--', c=COLORS[i])
         self.fig.canvas.draw()
-        stop = 1
 
 def dict2s(d):
     d2 = {}
-    #d2['goal'] = list(d['goal'])
     d2['map'] = [list(row) for row in d['map']]
     d2['objects'] = [list(o) for o in d['objects']]
     return str(list(sorted(d2.items(), key=lambda x: x[0])))
@@ -744,7 +668,6 @@ def s2dict(s):
     for (k,v) in l:
         d[k] = v
     d2 = {}
-    #d2['goal'] = np.array(d['goal'])
     d2['map'] = np.array([np.array(row) for row in d['map']])
     d2['objects'] = [np.array(o) for o in d['objects']]
     return d2
@@ -756,7 +679,6 @@ def s2l(s):
     return [int(ss) for ss in s.split('_')]
 
 def information_gain(p0, p1):
-    # errors in js distance with very small numbers
     p0 = [round(x,10) for x in p0]
     p1 = [round(x,10) for x in p1]
     return scipy.spatial.distance.jensenshannon(p0, p1)

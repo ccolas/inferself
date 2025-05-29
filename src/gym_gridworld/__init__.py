@@ -47,7 +47,7 @@ register(id='contingency_u-v0',
 
 register(id='contingency_noisy-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',
-         kwargs=dict(game_type='contingency', noise=0.25))
+         kwargs=dict(game_type='contingency', avatar_noise=1/3))
 
 register(id='contingency_more_chars-v0',
          entry_point='gym_gridworld.envs:GridworldEnv',

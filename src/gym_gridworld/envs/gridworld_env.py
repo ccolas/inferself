@@ -7,8 +7,6 @@ import matplotlib.pyplot as plt
 import gym
 from gym import spaces
 
-# define colors
-# 0: black; 1 : gray; 2 : green; 3 : green; 4 : red
 
 COLORS = {0: [0.0, 0.0, 0.0], 1: [0.5, 0.5, 0.5],
           2: [0.0, 1.0, 0.0], 3: [0.0, 1.0, 0.0],
@@ -20,13 +18,11 @@ COLORS = {0: [0.0, 0.0, 0.0], 1: [0.5, 0.5, 0.5],
 class GridworldEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, game_type, avatar_noise=0, noise=0, no_goal=False, shuffle_keys=False, change_agent_every=10, oneswitch=False, markovian=False, p_switch=0):
-        #assert game_type in ['logic', 'logic_extended', 'logic_extended_h',
-        #                     'contingency', 'contingency_extended',
-        #                     'change_agent', 'change_agent_extended', 'change_agent_extended_1', 'change_agent_extended_2']
+    def __init__(self, game_type, avatar_noise=0, noise=0, no_goal=False, shuffle_keys=False, change_agent_every=10, oneswitch=False, markovian=False, p_switch=0, seed=None):
 
         self.game_type = game_type
-        self._seed = None
+        if seed:
+            self.seed(seed)
 
         self.actions = [0, 1, 2, 3]
         self.action_space = spaces.Discrete(4)
@@ -78,8 +74,6 @@ class GridworldEnv(gym.Env):
         # sample agent location
         self.goal_pos = self.candidate_goal_pos[np.random.randint(self.n_goals)]
         self.start_grid_map[self.goal_pos[0], self.goal_pos[1]] = 3  # add it to the map
-        
-        #self.goal_pos = self.get_pos(of_what='goal', map=self.start_grid_map)
         
         #should self pos only have 1 option?
         self.agent_id = np.argwhere([np.all(cpos == self_pos) for cpos in self.candidates_pos]).flatten()[0]
@@ -245,13 +239,12 @@ class GridworldEnv(gym.Env):
 
         # update agent pos first
         current_agent_pos = self.candidates_pos[self.agent_id]
-        if np.random.rand() < self.noise:
-            candidate_actions = sorted(set(range(5)) - set([action]))
+        if np.random.rand() < self.avatar_noise:
+            candidate_actions = list(range(4))#sorted(set(range(5)) - set([action]))
             action = np.random.choice(candidate_actions)
-            if action < 4:
-                action_dir = self.action_pos_dict[action]
-            else:
-                action_dir = np.zeros(2)
+            #if action < 4:
+            action_dir = self.action_pos_dict[action]
+            
         else: 
             action_dir = self.action_pos_dict[action]
         next_agent_pos = current_agent_pos + action_dir
@@ -326,7 +319,7 @@ class GridworldEnv(gym.Env):
 
         # update agent pos first
         current_agent_pos = self.candidates_pos[self.agent_id]
-        if np.random.rand() < self.noise:
+        if np.random.rand() < self.avatar_noise:
             candidate_actions = sorted(set(range(5)) - set([action]))
             action = np.random.choice(candidate_actions)
             if action < 4:
