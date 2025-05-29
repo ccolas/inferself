@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+          integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.9.2/jquery-ui.min.js"></script>
+    <meta charset="UTF-8">
+    <title>Game Page</title>
+</head>
+<body>
+<div class="float-container">
+    <div class="float-child" style="padding-left:20%">
+        <div id="container"></div>
+    </div>
+    <div class="float-child">
+        <div id="level_count" style="text-align:left; font-size:24px;;">Level: <b>1</b>/40</div>
+        <div id="step_count">
+            <div id="step_count_text" style="text-align:left; font-size:24px;">Step: <b>0</b></div>
+            <br>
+            <div class="vertical-bar-container">
+                <div id="step_fill" class="fill-bar" style="height: 100%;"></div> <!-- Adjust the height to represent the fill percentage -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="width:100%">
+    <div class="card-body" id="instruction_card">
+        <h6 class="card-title">Instructions:</h6>
+    </div>
+</div>
+<div id="alert-container">
+    !
+  </div>
+
+<script>
+    var rt_lists = []
+    var ignore_click=false
+    var click_wait_time = 0
+    // Construct the game
+    var game_type = "{{ game_type }}";
+    var game = new Game(game_type);
+    var dimensions = [game.getBoard().length, game.getBoard()[0].length];
+
+    function add_instructions() {
+        var el = document.getElementById("instruction_card")
+        el.innerHTML += '<h6 class="card-subtitle mb-2 text-muted">On each level, you control a red square with the arrow keys.</h6>'
+        if (game_type.includes('change_agent')) {
+            el.innerHTML += '<h6 class="card-subtitle mb-2 text-muted">The square you are controlling may change within a level.</h6>'
+        } else if (game_type.includes('shuffle_keys')) {
+            el.innerHTML += '<h6 class="card-subtitle mb-2 text-muted">The way you control the square with these keys may change between levels.</h6>'
+        } else if (game_type.includes('noisy')) {
+            el.innerHTML += '<h6 class="card-subtitle mb-2 text-muted">However, 1/3 of the time, the square will move randomly instead of responding to your keypress.</h6>'
+        }
+        el.innerHTML += '<h6 class="card-subtitle mb-2 text-muted">You win a level by moving to a green goal square before your moves run out.</h6>'
+        el.innerHTML += '<h6 class="card-subtitle mb-2 text-muted">Try to win levels in as few moves as possible!</h6>'
+        el.innerHTML += '<h6 class="card-subtitle mb-2 text-muted">Your progress will be lost if you quit/refresh without finishing the game.</h6>'
+        el.innerHTML += '<h6 class="card-subtitle mb-2 text-muted"><b>BONUS OPPORTUNITY: Once you finish, we will take the average number of moves you took to solve 10 randomly selected levels on your first attempt.<br>If your average is lower than half of all participants, you will recieve a bonus!</b></h6>'
+    }
+    add_instructions()
+
+    var markup = game.getBoard().map(row => row.map(col => `<span class="field ${col === 8 ?
+        "avatar" : col === 2 ?
+            "goal" : col === 0 ?
+                "grass" : "wall"}"></span>`).join("")).join("<span class='clear'></span>");
+
+    document.getElementById("container").innerHTML = markup;
+
+    function paintBoard() {
+        markup = game.getBoard().map(row => row.map(col => `<span class="field ${col === 8 ?
+            "avatar" : col === 2 ?
+                "goal" : col === 0 ?
+                    "grass" : "wall"}"></span>`).join("")).join("<span class='clear'></span>");
+        document.getElementById("container").innerHTML = markup;
+    }
+
+    $(document).click(function(event) {
+        var text = $(event.target).text();
+    });
+
+    function showAlert(message, color) {
+        var alertBox= document.getElementById('alert-container');
+        alertBox.style.display = 'block';
+        console.log(color)
+        alertBox.style.backgroundColor = color;
+        alertBox.innerHTML = message;
+        // Hide the alert after 1000 milliseconds (1 second)
+        setTimeout(function() {
+            alertBox.style.display = "none";
+        }, 1500);
+    }
+
+    function click_no() {
+        document.getElementById('container').style.filter = "grayscale(20%)";
+        //document.getElementById('container').style.filter = "blur(2px)";
+        //var fields = document.querySelectorAll('.field');
+        //fields.forEach(function(el) {
+        //    el.style.filter = "blur(2px)";
+            //el.style.background ='color-mix(in srgb, red 70%, gray)'
+        //});
+    }
+    function click_yes() {
+        document.getElementById('container').style.filter = "none";
+        /*
+        var fields = document.querySelectorAll('.avatar');
+        fields.forEach(function(el) {
+            document.body.style.filter = "none";
+            //el.style.background = "red"
+            //el.style.opacity = 1.0;
+        });*/
+    }
+
+    function step_game(tmp, keyHandler) {
+        //step game after each key press
+        var level_status = game.step(tmp); //0 if nothing, 1 if just won, 2 if just lost
+        var wait_time = 0
+        if (level_status==1) {
+            showAlert("Success!", "lightgreen");
+            var wait_time = 1000
+        }
+        else if (level_status==2) {
+            showAlert("You failed to complete the level!", "red");
+            var wait_time = 2000
+        }
+        document.getElementById("step_count_text").innerHTML = "Step: <b>" + (game.getCurrentActionCount()) + "</b>";
+        document.getElementById("level_count").innerHTML = "Level: <b>" + (game.getLevelCount()+1) + "</b>/40";
+        document.getElementById('step_fill').style.height = (100*(1-(game.getCurrentActionCount()/150))) + "%"
+        paintBoard();
+        ignore_click=true
+        //make stuff transparent
+        //click_no();
+        setTimeout(function() {
+            if (level_status==1 || level_status==2) {
+                game.nextLevel()
+            } if (level_status==2) {
+                game.decrementLevelCount()
+            }
+            document.getElementById("step_count_text").innerHTML = "Step: <b>" + (game.getCurrentActionCount()) + "</b>";
+            document.getElementById("level_count").innerHTML = "Level: <b>" + (game.getLevelCount()+1) + "</b>/40";
+            document.getElementById('step_fill').style.height = (100*(1-(game.getCurrentActionCount()/150))) + "%"
+            paintBoard();
+            //click_no();
+            if (game.getLevelCount() == game.getNumLevels()) {
+                document.removeEventListener("keydown", keyHandler, false);
+                window.removeEventListener("keydown", window_keyhandler, false);
+                data = game.getData()["data"]
+                data["rts"] = rt_lists
+                data = JSON.stringify(data);
+                //save the data!
+                var event = new CustomEvent('dataReceived', { detail: data });
+                document.dispatchEvent(event);
+            }
+            start_time = performance.now()
+            //after first wait, another additional wait before we can click
+            if (level_status==0) {
+                setTimeout(function() {
+                    //click_yes();
+                    ignore_click = false
+                }, click_wait_time);
+            } else {
+                //click_yes();
+                ignore_click = false
+            }
+        }, wait_time)
+    }
+
+    $(document).ready(function () {
+        //init start time on ready
+        var start_time = performance.now()
+        $('div.alert-primary').fadeIn(100)//.delay(7000).fadeOut(700);
+
+        document.addEventListener("keydown", keyHandler, false);
+        function keyHandler(event) {
+            //don't allow held keys
+            if (event.repeat) { return }
+            if (ignore_click) { return }
+            if (game.getLevelCount() !== game.getNumLevels() && document.readyState === 'complete' && // listen only if document is loaded
+                (event.key === 'w' || event.key === 'a' || event.key === 's' || event.key === 'd' ||
+                    event.key === 'W' || event.key === 'A' || event.key === 'S' || event.key === 'D'
+                    || event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' ||
+                    event.key === 'ArrowRight')) { // move
+                
+                ignore_click=true
+                
+                var elapsed = performance.now() - start_time;
+                if (game.getCurrentActionCount() == 0) {
+                    rt_lists.push([])
+                }
+                rt_lists[rt_lists.length-1].push(elapsed)
+                start_time = performance.now()
+                let tmp;
+                switch (event.key) {
+                    case "w" || "W":
+                        tmp = 0;
+                        break;
+                    case "s" || "S":
+                        tmp = 1;
+                        break;
+                    case "a" || "A":
+                        tmp = 2;
+                        break;
+                    case "d" || "D":
+                        tmp = 3;
+                        break;
+                    case "ArrowUp":
+                        tmp = 0;
+                        break;
+                    case "ArrowDown":
+                        tmp = 1;
+                        break;
+                    case "ArrowLeft":
+                        tmp = 2;
+                        break;
+                    case "ArrowRight":
+                        tmp = 3;
+                        break;
+                }
+                step_game(tmp, keyHandler)
+            }
+        }
+    });
+
+    function window_keyhandler(e) {
+        if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(e.code) > -1) {
+            e.preventDefault();
+        }
+    }
+    window.addEventListener("keydown", window_keyhandler, false);
+
+
+    document.addEventListener('touchstart', handleTouchStart, false);
+    document.addEventListener('touchmove', handleTouchMove, false);
+
+    var xDown = null;
+    var yDown = null;
+
+    function getTouches(evt) {
+        return evt.touches ||             // browser API
+            evt.originalEvent.touches; // jQuery
+    }
+
+    function handleTouchStart(evt) {
+        var firstTouch = getTouches(evt)[0];
+        xDown = firstTouch.clientX;
+        yDown = firstTouch.clientY;
+    };
+
+
+    //same thing but for touch screen
+    function handleTouchMove(evt) {
+        var tmp;
+        if (!xDown || !yDown) {
+            return;
+        }
+
+        var xUp = evt.touches[0].clientX;
+        var yUp = evt.touches[0].clientY;
+
+        var xDiff = xDown - xUp;
+        var yDiff = yDown - yUp;
+
+        if (Math.abs(xDiff) > Math.abs(yDiff)) {/*most significant*/
+            if (xDiff > 0) {
+                tmp = 2;
+            } else {
+                tmp = 3;
+            }
+        } else {
+            if (yDiff > 0) {
+                tmp = 0;
+            } else {
+                tmp = 1;
+            }
+        }
+
+        step_game(tmp, keyHandler)
+
+        /* reset values */
+        xDown = null;
+        yDown = null;
+    };
+
+
+    let outer = document.getElementById('outer'),
+        wrapper = document.getElementById('wrap'),
+        maxWidth = screen.width,
+        maxHeight = screen.height;
+    //window.addEventListener("resize", resize);
+    //resize();
+
+    function resize() {
+        let scale,
+            width = window.innerWidth,
+            height = window.innerHeight,
+            isMax = width >= maxWidth && height >= (maxHeight);
+
+        console.log(width, height, maxWidth, maxHeight)
+
+        scale = Math.min(width / maxWidth, height / maxHeight);
+        console.log("Scale: " + scale)
+
+        if(scale <= 1) {
+            outer.style.transform = 'scale(' + scale + ')';
+            wrapper.style.width = isMax ? '' : maxWidth * scale;
+            wrapper.style.height = isMax ? '' : maxHeight * scale;
+        }
+
+
+        if( maxWidth <= 1000 || maxHeight <= 1000 ) {
+            scale = Math.min(maxWidth, maxHeight)
+        }
+    }
+
+</script>
+
+
+<style>
+    .center {
+        text-align:center;
+        margin: auto;
+        width: 450px;
+        height: 80%;
+        overflow: hidden;
+    }
+
+    #container {
+        margin:auto;
+        height: 450px;
+        width: 450px;
+        overflow: hidden;
+    }
+
+    .vertical-bar-container {
+        margin:auto;
+        height: 300px; /* Adjust the height of the bar container */
+        width: 30px; /* Adjust the width of the bar */
+        border:1px solid black;
+        position: relative;
+      }
+    .fill-bar {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        background-color: #0096FF; /* Fill color of the bar */
+    }
+
+    .field {
+        float: left;
+        height: 4.7%;
+        width: 4.7%;
+    }
+
+    .clear {
+        clear: both;
+        float: left;
+    }
+
+    .grass {
+        background: gray;
+    }
+
+    .wall {
+        background: black;
+    }
+
+    .avatar {
+        background: red;
+    }
+
+    .goal {
+        background: green;
+    }
+
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        background: #e6e9f0;
+        margin: 10px 0;
+    }
+
+    #topleft {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+    }
+
+
+    #wrap {
+        text-align:center;
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+
+    #outer {
+        margin: auto;
+        text-aligh: center;
+        width: 100px;
+        height: 100px;
+        transform-origin: 0% 0%;
+        border-radius: 10px;
+    }
+
+
+    .card {
+        margin:auto;
+        outline: None;
+        border-style: none !important;
+        width: 50%;
+    }
+
+    svg {
+        position: relative;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+
+    .float-container {
+        width:100%;
+    }
+    
+    .float-child {
+        float: left;
+        padding: 10px;
+    } 
+
+    body {
+        position: fixed;
+
+        width: 100%;
+        height: 100%;
+    }
+
+    #alert-container {
+        display: none;
+        position: fixed;
+        top: 4%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: lightgreen;
+        color: white;
+        width:400px;
+        padding: 10px;
+        border-radius: 5px;
+        z-index: 1000;
+    }
+
+</style>
+
+</body>
+</html>

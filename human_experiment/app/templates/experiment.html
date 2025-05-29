@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html> 
+    <head>
+        <title>Study Page</title>
+        <script src="static/jspsych/jspsych.js"></script>
+        <script src="static/jspsych/plugin-html-keyboard-response.js"></script>
+        <script src="static/jspsych/plugin-html-slider-response.js"></script>
+        <script src="static/jspsych/plugin-html-button-response.js"></script>
+        <script src="static/jspsych/plugin-external-html.js"></script>
+        <script src="static/jspsych/plugin-survey-text.js"></script>
+        <script src="static/jspsych/plugin-instructions.js"></script>
+        <script src="static/jspsych/plugin-survey-multi-choice.js"></script>
+        <link href="static/jspsych/jspsych.css" rel="stylesheet" type="text/css" />
+        <script type="text/javascript" src="static/Environment.js"> </script>
+        <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+        <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <body>
+    </body>
+    <script>
+   
+    var completion_code = ""
+    //var possible_game_types = ["logic", "logic_u", "contingency", "contingency_u", "shuffle_keys", "shuffle_keys_u", "change_agent", "change_agent_u", "contingency_2","contingency_6","contingency_8","contingency_noisy",'change_agent_10']
+    var possible_game_types = ["logic", "contingency", "contingency_u", "contingency_2", "contingency_6", "contingency_8", "contingency_noisy", "shuffle_keys", "shuffle_keys_u", "change_agent", 'change_agent_10']
+    var game_type = "contingency_noisy"//possible_game_types[6]//"logic"//possible_game_types[rand(possible_game_types.length)]
+    var bonus_amt = {"logic":"0.50", "contingency":"0.50", "contingency_u":"0.50", "contingency_2":"0.50", "contingency_6":"0.50", "contingency_8":"0.50", "contingency_noisy":"0.75", "shuffle_keys":"0.75", "shuffle_keys_u":"0.75", "change_agent":"1", 'change_agent_10':"1"}[game_type]
+    var subject_id = ""
+    var att1 = ""
+    var att2 = ""
+    var comp1 = ""
+    var comp2 = ""
+    var n_levels = 40
+    var comprehension_check_correct=false
+    var n_loops = 0
+
+
+    var jsPsych = initJsPsych();
+    var get_id = {
+	    type: jsPsychSurveyText,
+        preamble: function() {
+            html = "<div>Welcome!<br>We need your consent to proceed.</div><br>"
+            html += "<div style=text-align:left>You have been invited to take part in a research study involving a game. By completing this study, you are participating in a study being performed by cognitive scientists in the MIT Department of Brain and Cognitive Science. The purpose of this research is to understand how people play these games. You must be at least 18 years old to participate. There are neither specific benefits nor anticipated risks associated with participation in this study. Your participation in this study is completely voluntary and you can withdraw at any time by simply exiting the study. Choosing not to participate or withdrawing will result in no penalty. Your anonymity is assured; the researchers who have requested your participation will not receive any personal information about you, and any information you provide will not be shared in association with any personally identifying information.<br><br>If you have questions about this research, please contact the researchers by sending an email to temills@mit.edu. These researchers will do their best to communicate with you in a timely, professional, and courteous manner. If you have questions regarding your rights as a research subject, or if problems arise which you do not feel you can discuss with the researchers, please contact the MIT Institutional Review Board.<br>Your participation in this research is voluntary. You may discontinue participation at any time during the research activity. You may print a copy of this consent form for your records.</div>"
+            html += "<br><div>To indicate your consent, please enter your Prolific Worker ID below.<br></div>"
+            return html
+        },
+        questions: [{prompt: "", name: "subject_id", required: true}],
+        on_finish: function(data){
+            subject_id = data['response']['subject_id']
+        }
+    }
+
+    var attention_check = {
+        type: jsPsychSurveyMultiChoice,
+        preamble: "Before we begin, here are some checks to make sure you're paying attention.",
+        questions: [
+            {prompt: "<b>John is taller than Paul. Who is shorter?</b>", options: ["John","Paul", "Neither John nor Paul", "Both John and Paul"], required: true},
+            {prompt: '<b>What is the color of grass?</b><br><br>The fresh, uncut grass. To make sure you are paying attention, we want you to select purple.', options: ["Purple",  "Green", "Yellow"], required: true}
+        ],
+        on_finish: function(data) {
+            att1 = data['response']['Q0']
+            att2 = data['response']['Q1']
+        }
+    }
+
+
+    var comprehension_check = {
+        type: jsPsychSurveyMultiChoice,
+        preamble: ["<p align='center'>Check your understanding of the game before you begin.<br>Don't worry if you don't know the answers, we will show you the instructions again.</p>"],
+        questions: function() {
+            var qs = []
+            qs.push({
+                prompt: "What will you be doing in this game?",
+                options: ["Using your mouse to control a red square", "Using your mouse to control a green square", "Using the arrow keys to control a red square", "Using the arrow keys to control a green square"],
+                required: true
+            })
+            qs.push({
+                prompt: "What is your goal in the game?",
+                options: ["Move a green square to a red goal square", "Move a red square to a green goal square in as many moves as possible", "Move a red square to a green goal square in as few moves as possible"],
+                required: true
+            })
+            qs.push({
+                prompt: 'How can you get a bonus of $' + bonus_amt + ' in the game?',
+                options: ["If the average number of moves you took on <b>10</b> randomly selected levels on your first attempt is higher than that of half of all participants", "If the average number of moves you took on <b>10</b> randomly selected levels on your first attempt is lower than that of half of all participants", "There is no bonus opportunity"]
+            })
+            if (['shuffle_keys', 'shuffle_keys_u'].includes(game_type)) {
+                qs.push({
+                    prompt: "True or false: the way you use the arrow keys to control the square may change between levels.",
+                    options: ["True", "False"],
+                    required: true
+                })
+            } else if (['change_agent', 'change_agent_u', 'change_agent_10'].includes(game_type)) {
+                qs.push({
+                    prompt: "True or false: the square you control may change within a level.",
+                    options: ["True", "False"],
+                    required: true
+                })
+            } else if (['contingency_noisy'].includes(game_type)) {
+                qs.push({
+                    prompt: "True or false: the square you control will move randomly 1/3 of the time.",
+                    options: ["True", "False"],
+                    required: true
+                })
+            }
+            return qs
+        },
+        on_finish: function (data) {
+            var responses = data.response;
+            if (responses['Q0'] == "Using the arrow keys to control a red square" && responses['Q1'] == "Move a red square to a green goal square in as few moves as possible" && responses['Q2'] == "If the average number of moves you took on <b>10</b> randomly selected levels on your first attempt is lower than that of half of all participants") {
+                comprehension_check_correct = true;
+                //if we got the last one wrong, also false
+                if (['change_agent', 'change_agent_u', 'shuffle_keys', 'shuffle_keys_u', 'change_agent_10', 'contingency_noisy'].includes(game_type)) {
+                    if (responses['Q3'] != "True") {
+                        comprehension_check_correct = false;
+                    }
+                }
+            } else {
+                comprehension_check_correct = false;
+            }
+        }
+    }
+
+    var last_instr =  "<div>If you do not complete the level before your moves run out, <b>the level will restart</b>.</div><div>Try to win levels in as few moves as possible!</div><br>"
+    var last_instr2 = "<div><b>BONUS OPPORTUNITY:</b> Once you finish, we will randomly select <b>10</b> of the 40 levels you completed and find the average number of moves you took on your first attempt to solve each level.<br>If your average move count is lower than that of half of all participants, you will recieve a $" + bonus_amt + " bonus!</b></div><br>"
+    var instr_dict = {"logic": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr],
+                    "contingency": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>",last_instr],
+                    "contingency_2": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr],
+                    "contingency_6": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr],
+                    "contingency_8": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr],
+                    "contingency_noisy": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div><b>However, 1/3 of the time, the square will move randomly instead of responding to your keypress.</b></div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr],
+                    "contingency_u": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr],
+                    "shuffle_keys": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div><b>The way you control the square with these keys may change between levels.</b></div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr],
+                    "shuffle_keys_u": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div><b>The way you control the square with these keys may change between levels.</b></div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr],
+                    "change_agent": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div><b>The square you are controlling may change within a level.</b></div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr],
+                    "change_agent_10": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div><b>The square you are controlling may change within a level.</b></div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr]
+                    //"logic_u": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", last_instr],
+                    //"change_agent_u": ["<div><b>Please read these instructions carefully:</b></div><br><div>You will soon begin playing a game using the <b>arrow keys</b> on your keyboard.</div><div>There are <b>"+n_levels+"</b> levels.</div><br>", "<div>On each level, you will control a red square with the arrow keys.</div><div>The square you are controlling may change within a level.</div><div>You win the level by moving to a green goal square <b>before your moves run out</b>.</div><br>", "<div>Try to win levels in as few moves as possible, and before your moves run out!</div><br>"]
+    }
+    var instructions = {
+        type: jsPsychInstructions,
+        pages: function() {
+            return instr_dict[game_type].concat(last_instr2)
+        },
+        show_clickable_nav: true
+    }
+    var instructions_loop = {
+        timeline: [instructions, comprehension_check],
+        loop_function: function(data) {
+            n_loops = n_loops+1
+            return !comprehension_check_correct;
+        }
+    }
+
+    var begin = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: "Great, you're ready to begin!<br><br>",
+        choices: ['Continue']
+    };
+
+    var play_game = {
+        type: jsPsychExternalHtml,
+        execute_script: true,
+        url: function() {
+            return ("/" + game_type)
+        },
+        force_refresh: true,
+        on_finish: function(data) {
+            mydata = {}
+            mydata["exp_phase"] = "trial"
+            mydata["subject_id"] = subject_id
+            mydata["row_id"] = subject_id
+            mydata["game_data"] = data["data"]
+            mydata["full_rt"] = data["rt"]
+            mydata["game_type"] = game_type
+            save_data(mydata)
+        }
+    };
+    var instr2 = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: "<div>Thank you for your participation so far!</div><div>For the remaining 5 levels, there is an additional instruction:</div><div>On each level, as soon as you find which square you are controlling, please <b>click on that square!</b></div><div>You should click exactly once on each level.</div><div>Click continue to begin!</div>",
+        choices: ['Continue']
+    };
+
+    /*
+    var play_game2 = {
+        type: jsPsychExternalHtml,
+        execute_script: true,
+        url: "/" + game_type2,
+        force_refresh: true,
+        on_finish: function(data) {
+            mydata = {}
+            mydata["game_data2"] = data["data"]
+            mydata["full_rt2"] = data["rt"]
+            mydata["game_type2"] = game_type
+            save_data(mydata)
+        }
+    };*/
+    
+    var comprehension_check = {
+        type: jsPsychSurveyMultiChoice,
+        preamble: "",
+        questions: [
+            {prompt: "How many red squares were present in each level of the game you just played?", options: ["None","Four","Ten"], required: true},
+            {prompt: 'How many levels were there in the game?', options: ["10",  "50", "100"], required: true}
+        ],
+        on_finish: function(data) {
+            comp1 = data['response']['Q0']
+            comp2 = data['response']['Q1']
+        }
+    }
+
+
+    var demo_instructions = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: "<div>Finally, please provide us with some demographic information.</div><div>Press any key to begin.</div>",
+    };
+
+    var background = {
+        type: jsPsychHtmlSliderResponse,
+        stimulus: "How much experience do you have with playing computer games?<br><br>",
+        labels: ["None at all","A lot"],
+        slider_width: 600,
+        require_movement: true,
+    }
+
+    var demo1 = {
+        type: jsPsychSurveyText,
+        preamble: '',
+        questions: [{prompt: "How old are you?", required: true}, {prompt: "What is your native language?", required: true}, {prompt: "What is your nationality?", required: true}, {prompt: "In which country do you live?", required: true}, {prompt: "What is your gender identity?", required:true}],
+    };
+    //saves data on completion of this trial
+    var demo2 = {
+        type: jsPsychSurveyMultiChoice,
+        preamble: "",
+        questions: [
+            {prompt: "Are you a student?", options: ["Yes","No"], required: true},
+            {prompt: "What is your education level?", options: ["Grade/elementary school","High school","Some college or university","College or university degree","Graduate degree, Masters","PhD"], required: true}
+        ],
+        on_finish: function(data) {
+            data = {}
+            data.subject_id = subject_id
+            data.att1 = n_loops
+            data.att2 = att2
+            data.comp1 = comp1
+            data.comp2 = comp2
+            data.exp_phase = 'subject_info';
+            data.game_type = game_type;
+            var lastData = jsPsych.data.get().last(6).values();
+            console.log(lastData)
+            var comments = lastData[1]['response']['Q0'];
+            comments = comments + "\nfeedback: " + lastData[0]['response']['Q0'];
+            data.vg_experience = lastData[3]['response'];
+            var demo1 = lastData[4]['response'];
+            var demo2 = lastData[5]['response'];
+            data.age = demo1['Q0'];
+            data.language = demo1['Q1'];
+            data.nationality = demo1['Q2'];
+            data.country = demo1['Q3'];
+            data.gender = demo1['Q4'];
+            data.student = demo2['Q0'];
+            data.education = demo2['Q1'];
+            data.completion_code = comments;
+            save_data(data);
+        },
+    }
+
+    var feedback = {
+        type: jsPsychSurveyText,
+        questions: [{prompt: "Thank you for completing the game!<br>Please briefly describe your understanding of the game and your strategy.", rows: 6, columns: 60}],
+    };
+
+    var comments = {
+        type: jsPsychSurveyText,
+        questions: [{prompt: "Please share any comments you have about your experience taking this study.", rows: 6, columns: 60}]
+	};
+
+    var debrief = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: "<h4>Thank you for your participation!</h4><h4>In order to complete this HIT, you must enter the code below into Prolific.</h4><h4>Your secret completion code is:<br><br>" + completion_code + "<br><br>Copy this code now.</h4><h4>Once you've copied it, click the button below to leave this window.</h4>",
+        choices: ['Finish']
+    };
+
+    var choose_game_type = {
+        type: jsPsychSurveyMultiChoice,
+        preamble: "",
+        questions: [
+            {prompt: "For piloting:<br>Which game do you want to try?",
+            options: ["logic", "logic + goal uncertainty", "contingency", "contingency + goal uncertainty", "switching mappings", "switching mappings + goal uncertainty", "switching embodiments", "switching embodiments + goal uncertainty", "contingency 2 chars", 'contingency 6 chars', 'contingency 8 chars', 'noisy contingency', 'switching embodiments every 10'],
+            required: true}
+        ],
+        on_finish: function(data) {
+            var d = {"logic":"logic", "logic + goal uncertainty":"logic_u", "contingency":"contingency", "contingency + goal uncertainty":"contingency_u", "switching mappings":"shuffle_keys", "switching mappings + goal uncertainty":"shuffle_keys_u", "switching embodiments":"change_agent", "switching embodiments + goal uncertainty":"change_agent_u", "contingency 2 chars":'contingency_2', 'contingency 6 chars':'contingency_6', 'contingency 8 chars':'contingency_8', 'noisy contingency':'contingency_noisy', 'switching embodiments every 10':'change_agent_10'}
+            game_type = d[data['response']['Q0']]
+        }
+    }
+
+    //save data to database
+    function save_data(data) {
+        var url = "/"; 
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", url, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(JSON.stringify({
+            data
+        }));
+    }
+
+    //timeline = [get_id, instructions_loop, begin, play_game, feedback, comments, demo_instructions, background, demo1, demo2, debrief]
+    timeline = [choose_game_type, play_game, feedback, comments, demo_instructions, background, demo1, demo2, debrief]
+
+    jsPsych.run(timeline);
+
+    </script>
+</html>
