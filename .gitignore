@@ -116,21 +116,15 @@ venv.bak/
 #*.pk
 *.pt
 *.zip
-*.csv
 *.npy
 *.jbl
 *.pkl
 
-src/data/expe/*
-src/data/lstm_checkpoints/*
-src/results/*
 
 TextWorldExpress-dev
 
+human_experiment/instance
 src/ignore.json
-src/outputs
-outputs
-src/output
 
 src/inferself_test.py
 src/inferself_log.py
