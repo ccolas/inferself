@@ -119,6 +119,11 @@ def scatter_solving_new():
     axs[2].set_ylim(0,58)
     axs[2].set_xlim(0,90)
     
+    axs[0].spines[['right', 'top']].set_visible(False)
+    axs[1].spines[['right', 'top']].set_visible(False)
+    axs[2].spines[['right', 'top']].set_visible(False)
+    
+    
     for ax in axs:
         ax.tick_params(axis='x', labelsize=16)
     axs[0].tick_params(axis='y', labelsize=16)
@@ -169,11 +174,14 @@ def plot_solving_new(include_heuristic=False):
         agent_order += ['Proximity heuristic']
     
     plt.figure(figsize=(16, 7))
-    sns.barplot(data=df, x='env', y='steps', hue='agent', hue_order=agent_order, palette=colors, edgecolor='black', order = env_order, dodge=2.0, alpha=0.9, errorbar=('ci',95))
+    ax = sns.barplot(data=df, x='env', y='steps', hue='agent', hue_order=agent_order, palette=colors, edgecolor='black', order = env_order, dodge=2.0, alpha=0.9, errorbar=('ci',95))
+    
+    ax.spines[['right', 'top']].set_visible(False)
+    
     plt.ylabel("Solving time", fontweight="bold", fontsize=16)
     plt.xticks(fontsize=10, rotation=20, ha="right")
     plt.xlabel("Game type", fontweight="bold", fontsize=16)
-    plt.legend(title="", fontsize=12, loc='upper left')
+    plt.legend(title="", fontsize=12, loc='upper left', frameon=False)
     plt.savefig(plot_path + "solving_new.png", dpi=100, bbox_inches="tight")
 
 
@@ -430,13 +438,14 @@ def plot_centering():
     df['agent_before'] = df['agent'] + ", before selection"
     df['agent_after'] = df['agent'] + ", after selection"
     ax = sns.barplot(data=df, x='env', y='steps', hue='agent_after', hue_order=[a + ', after selection' for a in agent_order], order=env_order, palette='viridis', edgecolor='black', alpha=0.5, errorbar=('ci', 95))
+    ax.spines[['right', 'top']].set_visible(False)
     sns.barplot(data=df, x='env', y='sf_steps', hue='agent_before', hue_order=[a + ', before selection' for a in agent_order], order=env_order, palette='viridis', edgecolor='black',  alpha=0.9, errorbar=('ci', 95))
     plt.xticks(fontsize=12)
     plt.xlabel('Game type', fontsize=15, fontweight="bold")
-    plt.ylabel('Average no. steps', fontsize=15, fontweight="bold")
+    plt.ylabel('Average number of steps', fontsize=15, fontweight="bold")
     handles, labels = plt.gca().get_legend_handles_labels()
     order = [3,0,4,1,5,2]
-    plt.legend(handles=[handles[i] for i in order], labels=[labels[i] for i in order], title="", loc='upper left')
+    plt.legend(handles=[handles[i] for i in order], labels=[labels[i] for i in order], title="", loc='upper left', frameon=False)
     plt.gcf().set_size_inches(12, 6)
     plt.savefig(plot_path + "centering.png", dpi=1000)
     plt.show()
@@ -528,7 +537,6 @@ def plot_solving_og():
     env_order = ['Logic', 'Contingency', 'Switching Mappings', 'Switching Embodiments']
     
     #df.loc[df['agent'] != 'Humans', 'steps'] = 0
-    
     plt.figure(figsize=(16, 6))
     ax = sns.barplot(data=df, x='env', y='steps',hue='agent', hue_order=agent_order, palette=colors, edgecolor='black', order = env_order, dodge=2.0, alpha=0.9, errorbar=('ci',95))
     ax.axhline(y=86, xmin=0.425, xmax=0.477, color=sns.color_palette('viridis', 15)[14], linestyle='dashed', linewidth=2, alpha=0.9)
@@ -548,12 +556,12 @@ def plot_solving_og():
             arrowprops=dict(facecolor='black', edgecolor='black', arrowstyle='->'))
     ax.text(2.3, 96, str(int(round(m2,0))), ha='center', va='center', fontsize=10, color='black')
 
-    ax.spines['top'].set_visible(False)
+    ax.spines[['top', 'right']].set_visible(False)
     plt.ylabel("Solving time", fontweight="bold", fontsize=16)
     plt.xticks(fontsize=12)
     plt.ylim(0,99)
     plt.xlabel("Game type", fontweight="bold", fontsize=16)
-    plt.legend(title="", fontsize=12)
+    plt.legend(title="", fontsize=12, frameon=False)
     plt.gcf().set_size_inches(12, 6)
     plt.savefig(plot_path + "solving_og.png", dpi=1000)
     plt.show()
@@ -615,16 +623,16 @@ if __name__ == "__main__":
     plot_centering()
     plot_solving_og()
     plot_solving_new(include_heuristic=True)
-    scatter_solving_new()
+    #scatter_solving_new()
     
-    print("/\\"*50)
-    compare_new_and_og_humans()
-    print("/\\"*50)
-    stats_solving_new()
-    print("/\\"*50)
-    stats_solving_og()
-    print("/\\"*50)
-    stats_centering()
-    print("/\\"*50)
+    # print("/\\"*50)
+    # compare_new_and_og_humans()
+    # print("/\\"*50)
+    # stats_solving_new()
+    # print("/\\"*50)
+    # stats_solving_og()
+    # print("/\\"*50)
+    # stats_centering()
+    # print("/\\"*50)
     
     
